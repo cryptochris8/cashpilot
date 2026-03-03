@@ -28,9 +28,9 @@ export async function getCustomerDetail(customerId: string) {
   if (!customer) throw new Error("Customer not found");
 
   const allInvoices = customer.invoices;
-  const paidInvoices = allInvoices.filter((i) => i.status === "PAID");
-  const openInvoices = allInvoices.filter((i) => i.status === "OPEN" || i.status === "OVERDUE");
-  const overdueInvoices = allInvoices.filter((i) => i.status === "OVERDUE");
+  const paidInvoices = allInvoices.filter((i: typeof allInvoices[number]) => i.status === "PAID");
+  const openInvoices = allInvoices.filter((i: typeof allInvoices[number]) => i.status === "OPEN" || i.status === "OVERDUE");
+  const overdueInvoices = allInvoices.filter((i: typeof allInvoices[number]) => i.status === "OVERDUE");
 
   const totalOutstanding = openInvoices.reduce((sum, inv) => sum + Number(inv.balance), 0);
 

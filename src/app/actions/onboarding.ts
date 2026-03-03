@@ -35,7 +35,7 @@ export async function getOnboardingStatus(): Promise<
   const qboConnected = !!org.qboConnection;
   const invoiceCount = org.invoices.length;
   const openInvoices = org.invoices.filter(
-    (i) => i.status === "OPEN" || i.status === "OVERDUE"
+    (i: { status: string; balance: unknown }) => i.status === "OPEN" || i.status === "OVERDUE"
   );
   const totalOutstanding = openInvoices.reduce(
     (sum, i) => sum + Number(i.balance),
