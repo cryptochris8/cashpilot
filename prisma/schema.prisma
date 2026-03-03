@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum InvoiceStatus {
+  OPEN
+  OVERDUE
+  PAID
+  DISPUTED
+  WRITTEN_OFF
+}
+
+enum PipelineStage {
+  NEW
+  REMINDER_SENT
+  FOLLOW_UP
+  ESCALATED
+  RESOLVED
+}
+
+enum ReminderChannel {
+  EMAIL
+}
+
+enum ReminderDeliveryStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  BOUNCED
+  FAILED
+}
+
+enum NoteType {
+  GENERAL
+  DISPUTE
+  PROMISE_TO_PAY
+  ESCALATION
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+model Organization {
+  id               String   @id @default(uuid())
+  clerkOrgId       String   @unique
+  name             String
+  onboardingDone   Boolean  @default(false)
+  senderName       String?
+  replyToEmail     String?
+  emailFooter      String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  qboConnection    QuickBooksConnection?
+  customers        Customer[]
+  invoices         Invoice[]
+  templates        ReminderTemplate[]
+  cadences         ReminderCadence[]
+  subscription     Subscription?
+  emailSettings    EmailSettings?
+}
+
+model QuickBooksConnection {
+  id              String   @id @default(uuid())
+  organizationId  String   @unique
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  realmId         String
+  accessToken     String
+  refreshToken    String
+  tokenExpiresAt  DateTime
+  lastSyncAt      DateTime?
+  syncStatus      String   @default("idle")
+  syncError       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Customer {
+  id              String   @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  qboCustomerId   String
+  displayName     String
+  email           String?
+  phone           String?
+  notes           String?
+  unsubscribed    Boolean  @default(false)
+  unsubscribeToken String? @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  invoices        Invoice[]
+
+  @@unique([organizationId, qboCustomerId])
+}
+
+model Invoice {
+  id                  String         @id @default(uuid())
+  organizationId      String
+  organization        Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId          String
+  customer            Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  qboInvoiceId        String
+  invoiceNumber       String?
+  issueDate           DateTime
+  dueDate             DateTime
+  totalAmount         Decimal        @db.Decimal(12, 2)
+  balance             Decimal        @db.Decimal(12, 2)
+  status              InvoiceStatus  @default(OPEN)
+  pipelineStage       PipelineStage  @default(NEW)
+  lastReminderSentAt  DateTime?
+  pauseReminders      Boolean        @default(false)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  reminderLogs        ReminderLog[]
+  invoiceNotes        InvoiceNote[]
+
+  @@unique([organizationId, qboInvoiceId])
+}
+
+model ReminderTemplate {
+  id              String   @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  subject         String
+  body            String   @db.Text
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  cadenceSteps    CadenceStep[]
+  reminderLogs    ReminderLog[]
+}
+
+model ReminderCadence {
+  id              String   @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  isDefault       Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  steps           CadenceStep[]
+}
+
+model CadenceStep {
+  id              String           @id @default(uuid())
+  cadenceId       String
+  cadence         ReminderCadence  @relation(fields: [cadenceId], references: [id], onDelete: Cascade)
+  templateId      String
+  template        ReminderTemplate @relation(fields: [templateId], references: [id])
+  daysRelativeToDue Int
+  order           Int
+  createdAt       DateTime         @default(now())
+}
+
+model ReminderLog {
+  id              String                 @id @default(uuid())
+  invoiceId       String
+  invoice         Invoice                @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  templateId      String?
+  template        ReminderTemplate?      @relation(fields: [templateId], references: [id])
+  sentAt          DateTime               @default(now())
+  channel         ReminderChannel        @default(EMAIL)
+  deliveryStatus  ReminderDeliveryStatus @default(QUEUED)
+  resendMessageId String?
+  subject         String?
+  body            String?                @db.Text
+  responseNote    String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+}
+
+model InvoiceNote {
+  id         String   @id @default(uuid())
+  invoiceId  String
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  authorId   String
+  content    String   @db.Text
+  noteType   NoteType @default(GENERAL)
+  createdAt  DateTime @default(now())
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  organizationId       String             @unique
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  status               SubscriptionStatus @default(TRIALING)
+  currentPeriodEnd     DateTime?
+  trialEnd             DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+}
+
+model EmailSettings {
+  id              String   @id @default(uuid())
+  organizationId  String   @unique
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  senderName      String?
+  replyToEmail    String?
+  emailFooter     String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Phase 6: In-app notification system
+// NOTE: Run `npx prisma migrate dev --name add-notifications` after adding this model
+// Then run `npx prisma generate` to update the client
+model Notification {
+  id        String   @id @default(uuid())
+  orgId     String
+  type      String   // sync_complete, sync_error, reminder_sent, reminder_bounced, payment_received, subscription_expiring
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([orgId, createdAt])
+  @@index([orgId, read])
+}
