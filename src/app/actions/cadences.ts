@@ -168,8 +168,8 @@ export async function ensureDefaultCadence() {
   };
 
   const steps = templates
-    .filter((t) => daysMap[t.name] !== undefined)
-    .map((t, i) => ({
+    .filter((t: { name: string }) => daysMap[t.name] !== undefined)
+    .map((t: { id: string; name: string }, i: number) => ({
       templateId: t.id,
       daysRelativeToDue: daysMap[t.name],
       order: i,
