@@ -8,7 +8,7 @@ export { renderTemplate, type TemplateVariables } from "./render";
 function getResendClient(): Resend {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
-    return new Resend("re_placeholder");
+    throw new Error("RESEND_API_KEY environment variable is required");
   }
   return new Resend(key);
 }

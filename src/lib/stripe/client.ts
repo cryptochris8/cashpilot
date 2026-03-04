@@ -5,7 +5,11 @@ let stripeInstance: Stripe | null = null;
 
 export function getStripe(): Stripe {
   if (!stripeInstance) {
-    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_placeholder", {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) {
+      throw new Error("STRIPE_SECRET_KEY environment variable is required");
+    }
+    stripeInstance = new Stripe(key, {
       typescript: true,
     });
   }
@@ -13,8 +17,8 @@ export function getStripe(): Stripe {
 }
 
 export const PRICE_IDS = {
-  starter: process.env.STRIPE_PRICE_STARTER || "price_starter",
-  growth: process.env.STRIPE_PRICE_GROWTH || "price_growth",
+  starter: process.env.STRIPE_PRICE_STARTER!,
+  growth: process.env.STRIPE_PRICE_GROWTH!,
 } as const;
 
 export type PlanTier = "starter" | "growth";

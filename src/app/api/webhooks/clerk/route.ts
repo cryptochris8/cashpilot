@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Webhook } from "svix";
 import prisma from "@/lib/db";
 
 interface ClerkWebhookEvent {
@@ -12,9 +13,33 @@ interface ClerkWebhookEvent {
 }
 
 export async function POST(request: NextRequest) {
-  // In production, verify the webhook signature using the Clerk webhook secret
-  // For now, we parse the event and handle org creation
-  const body: ClerkWebhookEvent = await request.json();
+  const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    throw new Error("CLERK_WEBHOOK_SECRET environment variable is required");
+  }
+
+  const svixId = request.headers.get("svix-id");
+  const svixTimestamp = request.headers.get("svix-timestamp");
+  const svixSignature = request.headers.get("svix-signature");
+
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    return NextResponse.json({ error: "Missing svix headers" }, { status: 400 });
+  }
+
+  const rawBody = await request.text();
+  const wh = new Webhook(webhookSecret);
+
+  let body: ClerkWebhookEvent;
+  try {
+    body = wh.verify(rawBody, {
+      "svix-id": svixId,
+      "svix-timestamp": svixTimestamp,
+      "svix-signature": svixSignature,
+    }) as ClerkWebhookEvent;
+  } catch (err) {
+    console.error("Clerk webhook verification failed:", err);
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  }
 
   switch (body.type) {
     case "organization.created": {

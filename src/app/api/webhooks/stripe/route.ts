@@ -3,7 +3,11 @@ import Stripe from "stripe";
 import prisma from "@/lib/db";
 
 function getStripeClient(): Stripe {
-  return new Stripe(process.env.STRIPE_SECRET_KEY || "sk_placeholder");
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    throw new Error("STRIPE_SECRET_KEY environment variable is required");
+  }
+  return new Stripe(key);
 }
 
 function mapStripeStatus(
@@ -48,10 +52,14 @@ export async function POST(request: NextRequest) {
   let event: Stripe.Event;
 
   try {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required");
+    }
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET || ""
+      webhookSecret
     );
   } catch (err) {
     console.error("Stripe webhook verification failed:", err);

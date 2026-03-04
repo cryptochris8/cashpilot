@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Resend } from "resend";
 import prisma from "@/lib/db";
 import { parseReplyWebhook } from "@/lib/email/reply-handler";
 
@@ -14,8 +15,39 @@ interface ResendWebhookEvent {
 }
 
 export async function POST(request: NextRequest) {
-  // In production, verify the webhook signature using RESEND_WEBHOOK_SECRET
-  const body: ResendWebhookEvent = await request.json();
+  const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    throw new Error("RESEND_WEBHOOK_SECRET environment variable is required");
+  }
+
+  const svixId = request.headers.get("svix-id");
+  const svixTimestamp = request.headers.get("svix-timestamp");
+  const svixSignature = request.headers.get("svix-signature");
+
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    return NextResponse.json({ error: "Missing webhook headers" }, { status: 400 });
+  }
+
+  const rawBody = await request.text();
+  const resend = new Resend(process.env.RESEND_API_KEY!);
+
+  let body: ResendWebhookEvent;
+  try {
+    body = resend.webhooks.verify(
+      {
+        payload: rawBody,
+        headers: {
+          id: svixId,
+          timestamp: svixTimestamp,
+          signature: svixSignature,
+        },
+        webhookSecret,
+      }
+    ) as unknown as ResendWebhookEvent;
+  } catch (err) {
+    console.error("Resend webhook verification failed:", err);
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  }
 
   const deliveryStatusMap: Record<string, string> = {
     "email.sent": "SENT",
