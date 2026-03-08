@@ -99,6 +99,26 @@ export async function createPortalSession(orgId: string): Promise<string> {
   return session.url;
 }
 
+export async function cancelSubscription(orgId: string): Promise<void> {
+  try {
+    const subscription = await prisma.subscription.findUnique({
+      where: { organizationId: orgId },
+    });
+
+    if (!subscription) return;
+
+    const stripe = getStripe();
+
+    if (subscription.stripeSubscriptionId) {
+      await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+    } else if (subscription.stripeCustomerId) {
+      await stripe.customers.del(subscription.stripeCustomerId);
+    }
+  } catch (error) {
+    console.error("Failed to cancel Stripe subscription:", error);
+  }
+}
+
 export async function getSubscription(orgId: string) {
   const subscription = await prisma.subscription.findUnique({
     where: { organizationId: orgId },

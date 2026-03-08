@@ -1,15 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useClerk } from "@clerk/nextjs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Download, Trash2, AlertTriangle, Loader2 } from "lucide-react";
+import { deleteAccountAction } from "@/app/actions/account";
 
 export default function ExportPage() {
+  const { signOut } = useClerk();
   const [exporting, setExporting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [deleteRequested, setDeleteRequested] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleExport = async () => {
     setExporting(true);
@@ -30,11 +34,21 @@ export default function ExportPage() {
     setExporting(false);
   };
 
-  const handleDeleteRequest = () => {
-    // TODO: Implement actual account deletion via server action
-    console.log("Account deletion requested");
-    setDeleteRequested(true);
-    setDeleteConfirm(false);
+  const handleDeleteRequest = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const result = await deleteAccountAction();
+      if (result.success) {
+        await signOut({ redirectUrl: "/" });
+      } else {
+        setDeleteError(result.error || "Something went wrong.");
+        setDeleting(false);
+      }
+    } catch {
+      setDeleteError("Something went wrong. Please try again.");
+      setDeleting(false);
+    }
   };
 
   return (
@@ -89,17 +103,7 @@ export default function ExportPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {deleteRequested ? (
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Deletion Requested</AlertTitle>
-              <AlertDescription>
-                Your account deletion request has been submitted. Our team will
-                process it within 30 days per our data retention policy. You will
-                receive an email confirmation.
-              </AlertDescription>
-            </Alert>
-          ) : deleteConfirm ? (
+          {deleteConfirm ? (
             <div className="space-y-3">
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
@@ -110,16 +114,31 @@ export default function ExportPage() {
                   connection will be disconnected.
                 </AlertDescription>
               </Alert>
+              {deleteError && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{deleteError}</AlertDescription>
+                </Alert>
+              )}
               <div className="flex gap-2">
                 <Button
                   variant="destructive"
                   onClick={handleDeleteRequest}
+                  disabled={deleting}
                 >
-                  Yes, Delete My Account
+                  {deleting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    "Yes, Delete My Account"
+                  )}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => setDeleteConfirm(false)}
+                  disabled={deleting}
                 >
                   Cancel
                 </Button>
