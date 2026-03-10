@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
 import { sendReminder } from "@/lib/email/send";
+import { checkRateLimit, rateLimitKey, RATE_LIMITS } from "@/lib/security/rate-limit";
+import { invoiceBulkSchema } from "@/lib/validations/api";
 
 export async function POST(request: NextRequest) {
   const { orgId } = await auth();
@@ -10,12 +12,23 @@ export async function POST(request: NextRequest) {
   const org = await prisma.organization.findUnique({ where: { clerkOrgId: orgId } });
   if (!org) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
 
-  const body = await request.json();
-  const { action, invoiceIds } = body as { action: string; invoiceIds: string[] };
-
-  if (!invoiceIds || invoiceIds.length === 0) {
-    return NextResponse.json({ error: "No invoices selected" }, { status: 400 });
+  const limit = checkRateLimit(rateLimitKey(org.id, "bulk"), RATE_LIMITS.bulk);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+    );
   }
+
+  const raw = await request.json();
+  const parsed = invoiceBulkSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid request", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+  const { action, invoiceIds, stage } = parsed.data;
 
   const invoices = await prisma.invoice.findMany({
     where: { id: { in: invoiceIds }, organizationId: org.id },
@@ -58,7 +71,6 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "changeStage") {
-    const { stage } = body;
     if (!stage) return NextResponse.json({ error: "Stage required" }, { status: 400 });
     await prisma.invoice.updateMany({
       where: { id: { in: invoiceIds }, organizationId: org.id },

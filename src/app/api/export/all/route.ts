@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
+import { checkRateLimit, rateLimitKey, RATE_LIMITS } from "@/lib/security/rate-limit";
 
 /**
  * GET /api/export/all
@@ -111,6 +112,14 @@ export async function GET() {
 
   if (!org) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  const limit = checkRateLimit(rateLimitKey(org.id, "export"), RATE_LIMITS.export);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+    );
   }
 
   const exportData = {

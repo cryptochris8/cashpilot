@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
 
 function getStripeClient(): Stripe {
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest) {
       webhookSecret
     );
   } catch (err) {
+    Sentry.captureException(err);
     console.error("Stripe webhook verification failed:", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }

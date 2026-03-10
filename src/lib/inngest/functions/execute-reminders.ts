@@ -1,4 +1,5 @@
 import { inngest } from "../client";
+import * as Sentry from "@sentry/nextjs";
 import { evaluateReminders, executeReminders } from "@/lib/reminders/engine";
 import prisma from "@/lib/db";
 
@@ -54,6 +55,7 @@ export const executeRemindersJob = inngest.createFunction(
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        Sentry.captureException(error);
         console.error("[Reminders] Failed for org " + connection.organizationId + ":", message);
         results.push({
           orgId: connection.organizationId,

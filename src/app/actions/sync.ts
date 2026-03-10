@@ -1,6 +1,7 @@
 "use server";
 
 import { auth } from "@clerk/nextjs/server";
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
 import { initialSync, incrementalSync } from "@/lib/qbo/sync";
 import { decryptToken } from "@/lib/qbo/token-manager";
@@ -102,6 +103,7 @@ export async function disconnectQbo() {
       });
     }
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Failed to revoke QBO token:", error);
   }
 

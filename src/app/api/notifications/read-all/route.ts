@@ -17,7 +17,7 @@ export async function POST() {
   }
 
   try {
-    await (prisma as any).notification.updateMany({
+    await prisma.notification.updateMany({
       where: { orgId: org.id, read: false },
       data: { read: true },
     });

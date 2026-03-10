@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
 
 interface ReplyWebhookPayload {
@@ -89,6 +90,7 @@ export async function parseReplyWebhook(payload: ReplyWebhookPayload): Promise<{
       message: "Reply processed successfully",
     };
   } catch (error) {
+    Sentry.captureException(error);
     console.error("[reply-handler] Error processing reply:", error);
     return { handled: false, message: String(error) };
   }

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
 import { parseReplyWebhook } from "@/lib/email/reply-handler";
+import { serverEnv } from "@/lib/env";
 
 interface ResendWebhookEvent {
   type: string;
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest) {
   }
 
   const rawBody = await request.text();
-  const resend = new Resend(process.env.RESEND_API_KEY!);
+  const resend = new Resend(serverEnv.RESEND_API_KEY);
 
   let body: ResendWebhookEvent;
   try {
@@ -45,6 +47,7 @@ export async function POST(request: NextRequest) {
       }
     ) as unknown as ResendWebhookEvent;
   } catch (err) {
+    Sentry.captureException(err);
     console.error("Resend webhook verification failed:", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
@@ -118,11 +121,6 @@ export async function POST(request: NextRequest) {
       data: body.data,
     });
     console.log("[resend-webhook] Reply handling result:", result);
-  }
-
-  // Log any unhandled event types for future reference
-  if (!deliveryStatusMap[body.type] && body.type !== "email.replied" && body.type !== "inbound.received") {
-    console.log("[resend-webhook] Unhandled event type:", body.type, body.data);
   }
 
   return NextResponse.json({ received: true });

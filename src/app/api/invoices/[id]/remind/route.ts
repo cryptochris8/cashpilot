@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
 import { renderTemplate, sendReminder } from "@/lib/email/send";
 import { formatCurrency, formatDate, daysOverdue } from "@/lib/utils/format";
+import { checkRateLimit, rateLimitKey, RATE_LIMITS } from "@/lib/security/rate-limit";
+import { invoiceRemindSchema } from "@/lib/validations/api";
 
 export async function POST(
   request: NextRequest,
@@ -16,6 +18,14 @@ export async function POST(
   const org = await prisma.organization.findUnique({ where: { clerkOrgId: orgId } });
   if (!org) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  const limit = checkRateLimit(rateLimitKey(org.id, "invoiceRemind"), RATE_LIMITS.invoiceRemind);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+    );
   }
 
   const { id: invoiceId } = await params;
@@ -33,12 +43,21 @@ export async function POST(
     return NextResponse.json({ error: "Customer has no email address" }, { status: 400 });
   }
 
-  let body: { templateId?: string } = {};
+  let raw = {};
   try {
-    body = await request.json();
+    raw = await request.json();
   } catch {
     // No body provided, use default
   }
+
+  const parsed = invoiceRemindSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid request", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+  const body = parsed.data ?? {};
 
   let template = null;
 

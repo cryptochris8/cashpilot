@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
 import { initialSync, incrementalSync } from "@/lib/qbo/sync";
-
-// Simple in-memory rate limiter: 1 sync per minute per org
-const lastSyncTimes = new Map<string, number>();
+import { checkRateLimit, rateLimitKey, RATE_LIMITS } from "@/lib/security/rate-limit";
 
 export async function POST() {
   const { orgId } = await auth();
@@ -42,17 +41,13 @@ export async function POST() {
     );
   }
 
-  // Rate limiting: 1 sync per minute per org
-  const now = Date.now();
-  const lastSync = lastSyncTimes.get(org.id);
-  if (lastSync && now - lastSync < 60_000) {
-    const waitSeconds = Math.ceil((60_000 - (now - lastSync)) / 1000);
+  const limit = checkRateLimit(rateLimitKey(org.id, "qboSync"), RATE_LIMITS.qboSync);
+  if (!limit.allowed) {
     return NextResponse.json(
-      { error: "Rate limited. Please wait " + waitSeconds + " seconds before syncing again." },
-      { status: 429 }
+      { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
     );
   }
-  lastSyncTimes.set(org.id, now);
 
   try {
     let result;
@@ -67,6 +62,7 @@ export async function POST() {
       ...result,
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Manual sync error:", error);
     return NextResponse.json(
       { error: "Sync failed: " + (error instanceof Error ? error.message : String(error)) },

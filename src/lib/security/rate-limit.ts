@@ -78,6 +78,12 @@ export const RATE_LIMITS = {
   invoiceRemind: { maxRequests: 5, windowMs: 60_000 },
   /** Billing: 10 requests per minute per org */
   billing: { maxRequests: 10, windowMs: 60_000 },
+  /** Bulk email sends: 3 requests per minute per org */
+  bulk: { maxRequests: 3, windowMs: 60_000 },
+  /** CSV + JSON exports: 5 requests per minute per org */
+  export: { maxRequests: 5, windowMs: 60_000 },
+  /** Template preview (sends test email): 10 requests per minute per org */
+  templatePreview: { maxRequests: 10, windowMs: 60_000 },
 } as const;
 
 /**

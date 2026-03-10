@@ -1,16 +1,13 @@
 import { Resend } from "resend";
 import prisma from "@/lib/db";
 import crypto from "crypto";
+import { serverEnv } from "@/lib/env";
 
 // Re-export from render.ts for backward compatibility
 export { renderTemplate, type TemplateVariables } from "./render";
 
 function getResendClient(): Resend {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    throw new Error("RESEND_API_KEY environment variable is required");
-  }
-  return new Resend(key);
+  return new Resend(serverEnv.RESEND_API_KEY);
 }
 
 /**

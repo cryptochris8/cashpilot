@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
+import { checkRateLimit, rateLimitKey, RATE_LIMITS } from "@/lib/security/rate-limit";
 
 export async function GET(request: NextRequest) {
   const { orgId } = await auth();
@@ -8,6 +9,14 @@ export async function GET(request: NextRequest) {
 
   const org = await prisma.organization.findUnique({ where: { clerkOrgId: orgId } });
   if (!org) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+
+  const limit = checkRateLimit(rateLimitKey(org.id, "export"), RATE_LIMITS.export);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+    );
+  }
 
   const url = new URL(request.url);
   const status = url.searchParams.get("status");

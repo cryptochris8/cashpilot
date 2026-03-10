@@ -17,7 +17,7 @@ export async function GET() {
   }
 
   try {
-    const notifications = await (prisma as any).notification.findMany({
+    const notifications = await prisma.notification.findMany({
       where: { orgId: org.id },
       orderBy: { createdAt: "desc" },
       take: 50,

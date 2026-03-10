@@ -1,4 +1,5 @@
 import { inngest } from "../client";
+import * as Sentry from "@sentry/nextjs";
 import { incrementalSync } from "@/lib/qbo/sync";
 import prisma from "@/lib/db";
 
@@ -54,6 +55,7 @@ export const scheduledSync = inngest.createFunction(
         results.push({ orgId: connection.organizationId, success: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        Sentry.captureException(error);
         console.error(
           "[Scheduled Sync] Failed for org " + connection.organizationId + ":",
           message

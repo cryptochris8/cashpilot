@@ -1,4 +1,5 @@
 import { inngest } from "../client";
+import * as Sentry from "@sentry/nextjs";
 import { incrementalSync, initialSync } from "@/lib/qbo/sync";
 import prisma from "@/lib/db";
 
@@ -41,6 +42,7 @@ export const syncInvoices = inngest.createFunction(
       console.log("[Sync] Completed for org " + orgId + ": " + JSON.stringify(result));
       return result;
     } catch (error) {
+      Sentry.captureException(error);
       console.error("[Sync] Failed for org " + orgId + ":", error);
       throw error;
     }

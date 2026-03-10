@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
 import { decryptToken } from "@/lib/qbo/token-manager";
 
@@ -51,6 +52,7 @@ export async function POST() {
     }
   } catch (error) {
     // Log but do not fail - we still want to remove the local connection
+    Sentry.captureException(error);
     console.error("Failed to revoke QBO token:", error);
   }
 

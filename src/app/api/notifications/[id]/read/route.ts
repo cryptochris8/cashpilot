@@ -14,7 +14,7 @@ export async function POST(
   const { id } = await params;
 
   try {
-    await (prisma as any).notification.update({
+    await prisma.notification.update({
       where: { id },
       data: { read: true },
     });

@@ -40,7 +40,7 @@ export const securityHeaders = [
           "style-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://*.clerk.dev",
           "img-src 'self' data: blob: https:",
           "font-src 'self' data: https://*.clerk.accounts.dev https://*.clerk.dev",
-          "connect-src 'self' https://api.stripe.com https://*.clerk.accounts.dev https://*.clerk.dev https://api.resend.com",
+          "connect-src 'self' https://api.stripe.com https://*.clerk.accounts.dev https://*.clerk.dev https://api.resend.com https://*.ingest.sentry.io",
           "frame-src 'self' https://js.stripe.com https://accounts.google.com https://*.clerk.accounts.dev https://*.clerk.dev",
           "object-src 'none'",
           "base-uri 'self'",

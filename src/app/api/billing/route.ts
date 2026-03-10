@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
 import { createCheckoutSession, createPortalSession } from "@/lib/stripe/client";
+import { checkRateLimit, rateLimitKey, RATE_LIMITS } from "@/lib/security/rate-limit";
+import { billingCheckoutSchema } from "@/lib/validations/api";
 
 export async function GET() {
   const { orgId } = await auth();
@@ -49,17 +52,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
   }
 
-  try {
-    const body = await request.json();
-    const { priceId } = body;
+  const limit = checkRateLimit(rateLimitKey(org.id, "billing"), RATE_LIMITS.billing);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+    );
+  }
 
-    if (!priceId) {
-      return NextResponse.json({ error: "Price ID is required" }, { status: 400 });
+  try {
+    const raw = await request.json();
+    const parsed = billingCheckoutSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid request", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
+    const { priceId } = parsed.data;
 
     const url = await createCheckoutSession(org.id, priceId);
     return NextResponse.json({ url });
   } catch (err) {
+    Sentry.captureException(err);
     console.error("Billing error:", err);
     return NextResponse.json(
       { error: "Failed to create checkout session" },

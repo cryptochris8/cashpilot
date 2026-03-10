@@ -1,6 +1,7 @@
 "use server";
 
 import { auth } from "@clerk/nextjs/server";
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
 import { cancelSubscription } from "@/lib/stripe/client";
 import { decryptToken } from "@/lib/qbo/token-manager";
@@ -47,6 +48,7 @@ export async function deleteAccountAction(): Promise<{
         });
       }
     } catch (error) {
+      Sentry.captureException(error);
       console.error("Failed to revoke QBO token during account deletion:", error);
     }
   }
@@ -60,6 +62,7 @@ export async function deleteAccountAction(): Promise<{
       where: { id: org.id },
     });
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Failed to delete organization:", error);
     return { error: "Failed to delete account. Please try again." };
   }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { exchangeCodeForTokens } from "@/lib/qbo/client";
 import { encryptToken } from "@/lib/qbo/token-manager";
 import prisma from "@/lib/db";
@@ -91,6 +92,7 @@ export async function GET(request: NextRequest) {
       new URL("/settings?success=connected", request.url)
     );
   } catch (error) {
+    Sentry.captureException(error);
     console.error("QBO callback error:", error);
     return NextResponse.redirect(
       new URL("/settings?error=token_exchange_failed", request.url)

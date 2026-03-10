@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
 
 interface ClerkWebhookEvent {
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
       "svix-signature": svixSignature,
     }) as ClerkWebhookEvent;
   } catch (err) {
+    Sentry.captureException(err);
     console.error("Clerk webhook verification failed:", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }

@@ -10,7 +10,7 @@ export async function getNotifications(orgId: string) {
   // NOTE: Requires Notification model in Prisma schema.
   // For MVP, we return an empty array until the schema migration runs.
   try {
-    const notifications = await (prisma as any).notification.findMany({
+    const notifications = await prisma.notification.findMany({
       where: { orgId },
       orderBy: { createdAt: "desc" },
       take: 50,
@@ -27,7 +27,7 @@ export async function getNotifications(orgId: string) {
  */
 export async function markAsRead(notificationId: string) {
   try {
-    await (prisma as any).notification.update({
+    await prisma.notification.update({
       where: { id: notificationId },
       data: { read: true },
     });
@@ -42,7 +42,7 @@ export async function markAsRead(notificationId: string) {
  */
 export async function markAllAsRead(orgId: string) {
   try {
-    await (prisma as any).notification.updateMany({
+    await prisma.notification.updateMany({
       where: { orgId, read: false },
       data: { read: true },
     });
@@ -62,7 +62,7 @@ export async function createNotification(
   message: string
 ) {
   try {
-    const notification = await (prisma as any).notification.create({
+    const notification = await prisma.notification.create({
       data: {
         orgId,
         type,

@@ -1,15 +1,13 @@
 import Stripe from "stripe";
+import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
+import { serverEnv } from "@/lib/env";
 
 let stripeInstance: Stripe | null = null;
 
 export function getStripe(): Stripe {
   if (!stripeInstance) {
-    const key = process.env.STRIPE_SECRET_KEY;
-    if (!key) {
-      throw new Error("STRIPE_SECRET_KEY environment variable is required");
-    }
-    stripeInstance = new Stripe(key, {
+    stripeInstance = new Stripe(serverEnv.STRIPE_SECRET_KEY, {
       typescript: true,
     });
   }
@@ -17,8 +15,8 @@ export function getStripe(): Stripe {
 }
 
 export const PRICE_IDS = {
-  starter: process.env.STRIPE_PRICE_STARTER!,
-  growth: process.env.STRIPE_PRICE_GROWTH!,
+  starter: serverEnv.STRIPE_PRICE_STARTER,
+  growth: serverEnv.STRIPE_PRICE_GROWTH,
 } as const;
 
 export type PlanTier = "starter" | "growth";
@@ -115,6 +113,7 @@ export async function cancelSubscription(orgId: string): Promise<void> {
       await stripe.customers.del(subscription.stripeCustomerId);
     }
   } catch (error) {
+    Sentry.captureException(error);
     console.error("Failed to cancel Stripe subscription:", error);
   }
 }
