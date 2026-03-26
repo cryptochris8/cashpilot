@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
+import { z } from "zod/v4";
 
 async function getOrg() {
   const { orgId } = await auth();
@@ -37,13 +38,16 @@ export async function getEmailSettings(): Promise<
 }
 
 export async function updateEmailSettings(data: EmailSettingsData) {
+  const schema = z.object({
+    senderName: z.string().max(200),
+    replyToEmail: z.union([z.string().email(), z.literal("")]),
+    emailFooter: z.string().max(10000),
+  });
+  const parsed = schema.safeParse(data);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
-
-  // Validate email if provided
-  if (data.replyToEmail && !data.replyToEmail.includes("@")) {
-    return { error: "Invalid email address" };
-  }
 
   await prisma.emailSettings.upsert({
     where: { organizationId: org.id },

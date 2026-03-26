@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { InvoiceNotes } from "./invoice-notes";
 import { getInvoiceDetail, updateInvoiceStage, pauseReminders, resumeReminders, markAsDisputed } from "@/app/actions/pipeline";
 import { formatCurrency, formatDate, daysOverdue } from "@/lib/utils/format";
+import { invoiceStatusVariant, stageVariant, deliveryStatusVariant } from "@/lib/utils/badge-variants";
 import { Loader2, Mail, Pause, Play, AlertTriangle, ExternalLink } from "lucide-react";
 import type { PipelineStage } from "@prisma/client";
 
@@ -27,18 +28,6 @@ interface InvoiceDetailDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  OPEN: "default", OVERDUE: "destructive", PAID: "secondary", DISPUTED: "outline", WRITTEN_OFF: "outline",
-};
-
-const stageVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  NEW: "default", REMINDER_SENT: "secondary", FOLLOW_UP: "default", ESCALATED: "destructive", RESOLVED: "secondary",
-};
-
-const deliveryStatusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  QUEUED: "outline", SENT: "default", DELIVERED: "secondary", OPENED: "secondary", BOUNCED: "destructive", FAILED: "destructive",
-};
 
 export function InvoiceDetailDrawer({ invoiceId, open, onOpenChange }: InvoiceDetailDrawerProps) {
   const [invoice, setInvoice] = useState<InvoiceDetailData | null>(null);
@@ -97,7 +86,7 @@ export function InvoiceDetailDrawer({ invoiceId, open, onOpenChange }: InvoiceDe
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2 flex-wrap">
                 <span>Invoice #{invoice.invoiceNumber ?? "N/A"}</span>
-                <Badge variant={statusVariant[invoice.status] ?? "outline"}>{invoice.status}</Badge>
+                <Badge variant={invoiceStatusVariant[invoice.status] ?? "outline"}>{invoice.status}</Badge>
                 <Badge variant={stageVariant[invoice.pipelineStage] ?? "outline"}>{invoice.pipelineStage.replace("_", " ")}</Badge>
               </SheetTitle>
               <SheetDescription>{invoice.customer.displayName}</SheetDescription>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -36,6 +36,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useKeyboardShortcuts({
     onShowHelp: () => setShortcutsOpen(true),
   });
+
+  // Close mobile nav on Escape key
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && mobileNavOpen) {
+        setMobileNavOpen(false);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mobileNavOpen]);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -79,6 +90,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             size="sm"
             className="md:hidden"
             onClick={() => setMobileNavOpen(!mobileNavOpen)}
+            aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={mobileNavOpen}
+            aria-controls="mobile-nav"
           >
             {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
@@ -96,7 +110,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Mobile Navigation */}
         {mobileNavOpen && (
-          <nav className="border-b bg-muted/40 p-3 md:hidden print:hidden">
+          <nav id="mobile-nav" className="border-b bg-muted/40 p-3 md:hidden print:hidden">
             <div className="space-y-1">
               {navItems.map((item) => {
                 const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);

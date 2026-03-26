@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   const org = await prisma.organization.findUnique({ where: { clerkOrgId: orgId } });
   if (!org) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
 
-  const limit = checkRateLimit(rateLimitKey(org.id, "bulk"), RATE_LIMITS.bulk);
+  const limit = await checkRateLimit(rateLimitKey(org.id, "bulk"), RATE_LIMITS.bulk);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },

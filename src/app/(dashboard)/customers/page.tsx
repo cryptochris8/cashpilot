@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Users } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatCurrency } from "@/lib/utils/format";
 
 interface CustomerRow {
   id: string;
@@ -18,10 +19,6 @@ interface CustomerRow {
   }>;
 }
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
-}
-
 export default function CustomersPage() {
   const router = useRouter();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
@@ -29,13 +26,13 @@ export default function CustomersPage() {
 
   const fetchCustomers = useCallback(async () => {
     try {
-      const res = await fetch("/api/customers");
+      const res = await fetch("/api/customers?limit=100");
       if (res.ok) {
         const data = await res.json();
-        setCustomers(data);
+        setCustomers(data.customers ?? data);
       }
-    } catch {
-      // Handle error
+    } catch (error) {
+      console.error(error);
     }
     setLoading(false);
   }, []);

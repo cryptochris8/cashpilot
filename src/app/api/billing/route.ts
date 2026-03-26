@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
-import { createCheckoutSession, createPortalSession } from "@/lib/stripe/client";
+import { createCheckoutSession, createPortalSession, PRICE_IDS } from "@/lib/stripe/client";
 import { checkRateLimit, rateLimitKey, RATE_LIMITS } from "@/lib/security/rate-limit";
 import { billingCheckoutSchema } from "@/lib/validations/api";
 
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
   }
 
-  const limit = checkRateLimit(rateLimitKey(org.id, "billing"), RATE_LIMITS.billing);
+  const limit = await checkRateLimit(rateLimitKey(org.id, "billing"), RATE_LIMITS.billing);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
@@ -70,6 +70,15 @@ export async function POST(request: NextRequest) {
       );
     }
     const { priceId } = parsed.data;
+
+    // Validate against known price IDs to prevent arbitrary plan subscription
+    const allowedPriceIds = new Set(Object.values(PRICE_IDS));
+    if (!allowedPriceIds.has(priceId)) {
+      return NextResponse.json(
+        { error: "Invalid price ID" },
+        { status: 400 }
+      );
+    }
 
     const url = await createCheckoutSession(org.id, priceId);
     return NextResponse.json({ url });

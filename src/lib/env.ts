@@ -25,9 +25,11 @@ const serverSchema = z.object({
   QBO_ENVIRONMENT: z.enum(["sandbox", "production"]),
   QBO_TOKEN_ENCRYPTION_KEY: z.string().min(1),
 
-  // Optional
+  // Inngest — required in production for webhook signature verification
   INNGEST_EVENT_KEY: z.string().optional(),
-  INNGEST_SIGNING_KEY: z.string().optional(),
+  INNGEST_SIGNING_KEY: process.env.NODE_ENV === "production"
+    ? z.string().min(1)
+    : z.string().optional(),
   SENTRY_AUTH_TOKEN: z.string().optional(),
   SENTRY_ORG: z.string().optional(),
   SENTRY_PROJECT: z.string().optional(),

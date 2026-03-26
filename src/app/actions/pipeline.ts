@@ -71,7 +71,7 @@ export async function updateInvoiceStage(
 
   await prisma.$transaction([
     prisma.invoice.update({
-      where: { id: invoiceId },
+      where: { id: invoiceId, organizationId: org.id },
       data: { pipelineStage: newStage },
     }),
     prisma.invoiceNote.create({
@@ -105,7 +105,7 @@ export async function bulkUpdateStage(
     if (inv.pipelineStage !== newStage) {
       operations.push(
         prisma.invoice.update({
-          where: { id: inv.id },
+          where: { id: inv.id, organizationId: org.id },
           data: { pipelineStage: newStage },
         })
       );
@@ -133,10 +133,12 @@ export async function pauseReminders(invoiceId: string) {
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
 
-  await prisma.invoice.updateMany({
+  const result = await prisma.invoice.updateMany({
     where: { id: invoiceId, organizationId: org.id },
     data: { pauseReminders: true },
   });
+
+  if (result.count === 0) return { error: "Invoice not found" };
 
   await prisma.invoiceNote.create({
     data: {
@@ -154,10 +156,12 @@ export async function resumeReminders(invoiceId: string) {
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
 
-  await prisma.invoice.updateMany({
+  const result = await prisma.invoice.updateMany({
     where: { id: invoiceId, organizationId: org.id },
     data: { pauseReminders: false },
   });
+
+  if (result.count === 0) return { error: "Invoice not found" };
 
   await prisma.invoiceNote.create({
     data: {
@@ -175,21 +179,29 @@ export async function bulkPauseReminders(invoiceIds: string[], pause: boolean) {
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
 
-  await prisma.invoice.updateMany({
+  // Only update invoices belonging to this org
+  const ownedInvoices = await prisma.invoice.findMany({
     where: { id: { in: invoiceIds }, organizationId: org.id },
+    select: { id: true },
+  });
+
+  const ownedIds = ownedInvoices.map((inv) => inv.id);
+  if (ownedIds.length === 0) return { error: "No invoices found" };
+
+  await prisma.invoice.updateMany({
+    where: { id: { in: ownedIds }, organizationId: org.id },
     data: { pauseReminders: pause },
   });
 
-  for (const id of invoiceIds) {
-    await prisma.invoiceNote.create({
-      data: {
-        invoiceId: id,
-        authorId: "system",
-        content: pause ? "Reminders paused (bulk action)" : "Reminders resumed (bulk action)",
-        noteType: "GENERAL",
-      },
-    });
-  }
+  // Batch create notes for owned invoices only
+  await prisma.invoiceNote.createMany({
+    data: ownedIds.map((id) => ({
+      invoiceId: id,
+      authorId: "system",
+      content: pause ? "Reminders paused (bulk action)" : "Reminders resumed (bulk action)",
+      noteType: "GENERAL" as const,
+    })),
+  });
 
   return { success: true };
 }
@@ -198,9 +210,16 @@ export async function markAsDisputed(invoiceId: string) {
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
 
+  // Verify ownership before writing
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, organizationId: org.id },
+  });
+
+  if (!invoice) return { error: "Invoice not found" };
+
   await prisma.$transaction([
     prisma.invoice.update({
-      where: { id: invoiceId },
+      where: { id: invoiceId, organizationId: org.id },
       data: { status: "DISPUTED", pauseReminders: true },
     }),
     prisma.invoiceNote.create({

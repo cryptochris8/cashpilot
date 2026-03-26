@@ -28,6 +28,7 @@ export function SupportWidget() {
               size="sm"
               className="h-6 w-6 p-0"
               onClick={() => setOpen(false)}
+              aria-label="Close support panel"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -80,6 +81,8 @@ export function SupportWidget() {
         onClick={() => setOpen(!open)}
         size="lg"
         className="h-12 w-12 rounded-full shadow-lg"
+        aria-label={open ? "Close support panel" : "Open support panel"}
+        aria-expanded={open}
       >
         {open ? (
           <X className="h-5 w-5" />

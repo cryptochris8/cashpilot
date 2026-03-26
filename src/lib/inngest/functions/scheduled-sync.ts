@@ -2,6 +2,7 @@ import { inngest } from "../client";
 import * as Sentry from "@sentry/nextjs";
 import { incrementalSync } from "@/lib/qbo/sync";
 import prisma from "@/lib/db";
+import pLimit from "p-limit";
 
 /**
  * Inngest cron function: run incremental sync for all active QBO connections
@@ -27,32 +28,31 @@ export const scheduledSync = inngest.createFunction(
 
     console.log("[Scheduled Sync] Found " + connections.length + " active connections");
 
-    const results: Array<{
+    const limit = pLimit(5);
+
+    async function processOrg(connection: (typeof connections)[number]): Promise<{
       orgId: string;
       success: boolean;
       error?: string;
-    }> = [];
+    }> {
+      if (!connection.lastSyncAt) {
+        // Skip initial sync in scheduled runs - it should be triggered manually
+        console.log("[Scheduled Sync] Skipping org " + connection.organizationId + " - needs initial sync");
+        return {
+          orgId: connection.organizationId,
+          success: false,
+          error: "needs_initial_sync",
+        };
+      }
 
-    for (const connection of connections) {
       try {
-        if (!connection.lastSyncAt) {
-          // Skip initial sync in scheduled runs - it should be triggered manually
-          console.log("[Scheduled Sync] Skipping org " + connection.organizationId + " - needs initial sync");
-          results.push({
-            orgId: connection.organizationId,
-            success: false,
-            error: "needs_initial_sync",
-          });
-          continue;
-        }
-
         const result = await incrementalSync(connection.organizationId);
         console.log(
           "[Scheduled Sync] Org " + connection.organizationId +
           ": " + result.invoicesUpserted + " invoices, " +
           result.customersUpserted + " customers"
         );
-        results.push({ orgId: connection.organizationId, success: true });
+        return { orgId: connection.organizationId, success: true };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         Sentry.captureException(error);
@@ -74,13 +74,26 @@ export const scheduledSync = inngest.createFunction(
           // Ignore update errors
         }
 
-        results.push({
+        return {
           orgId: connection.organizationId,
           success: false,
           error: message,
-        });
+        };
       }
     }
+
+    const settled = await Promise.allSettled(
+      connections.map((conn) => limit(() => processOrg(conn)))
+    );
+
+    const results = settled.map((outcome, i) => {
+      if (outcome.status === "fulfilled") return outcome.value;
+      // processOrg already catches its own errors, but handle unexpected rejections
+      const message = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+      Sentry.captureException(outcome.reason);
+      console.error("[Scheduled Sync] Unexpected failure for org " + connections[i].organizationId + ":", message);
+      return { orgId: connections[i].organizationId, success: false, error: message };
+    });
 
     return {
       connectionsProcessed: connections.length,

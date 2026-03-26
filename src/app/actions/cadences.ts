@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
+import { z } from "zod/v4";
 
 async function getOrg() {
   const { orgId } = await auth();
@@ -44,10 +45,22 @@ export async function getAllCadences() {
   return { data: cadences };
 }
 
+const cadenceStepSchema = z.object({
+  templateId: z.string(),
+  daysRelativeToDue: z.number().min(-365).max(365),
+});
+
 export async function createCadence(
   name: string,
   steps: Array<{ templateId: string; daysRelativeToDue: number }>
 ) {
+  const schema = z.object({
+    name: z.string().min(1).max(200),
+    steps: z.array(cadenceStepSchema).min(1),
+  });
+  const parsed = schema.safeParse({ name, steps });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
 
@@ -85,6 +98,10 @@ export async function updateCadence(
   cadenceId: string,
   steps: Array<{ templateId: string; daysRelativeToDue: number }>
 ) {
+  const schema = z.array(cadenceStepSchema).min(1);
+  const parsed = schema.safeParse(steps);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
 
@@ -94,28 +111,30 @@ export async function updateCadence(
 
   if (!cadence) return { error: "Cadence not found" };
 
-  // Delete existing steps and recreate
-  await prisma.cadenceStep.deleteMany({
-    where: { cadenceId },
-  });
+  // Delete existing steps and recreate atomically
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.cadenceStep.deleteMany({
+      where: { cadenceId },
+    });
 
-  const updated = await prisma.reminderCadence.update({
-    where: { id: cadenceId },
-    data: {
-      steps: {
-        create: steps.map((step, index) => ({
-          templateId: step.templateId,
-          daysRelativeToDue: step.daysRelativeToDue,
-          order: index,
-        })),
+    return tx.reminderCadence.update({
+      where: { id: cadenceId },
+      data: {
+        steps: {
+          create: steps.map((step, index) => ({
+            templateId: step.templateId,
+            daysRelativeToDue: step.daysRelativeToDue,
+            order: index,
+          })),
+        },
       },
-    },
-    include: {
-      steps: {
-        include: { template: true },
-        orderBy: { order: "asc" },
+      include: {
+        steps: {
+          include: { template: true },
+          orderBy: { order: "asc" },
+        },
       },
-    },
+    });
   });
 
   return { data: updated };
@@ -131,11 +150,13 @@ export async function setActiveCadence(cadenceId: string) {
     data: { isActive: false },
   });
 
-  // Activate selected
-  await prisma.reminderCadence.update({
-    where: { id: cadenceId },
+  // Activate selected (scoped to org for safety)
+  const result = await prisma.reminderCadence.updateMany({
+    where: { id: cadenceId, organizationId: org.id },
     data: { isActive: true },
   });
+
+  if (result.count === 0) return { error: "Cadence not found" };
 
   return { success: true };
 }

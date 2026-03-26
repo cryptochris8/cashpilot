@@ -15,14 +15,12 @@ import {
   ArrowLeft, Loader2, Send, Pause, Play, AlertTriangle,
   ExternalLink, StickyNote, Calendar, DollarSign, User,
 } from "lucide-react";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/format";
+import { invoiceStatusVariant, deliveryStatusVariant } from "@/lib/utils/badge-variants";
 
 type InvoiceStatus = "OPEN" | "OVERDUE" | "PAID" | "DISPUTED" | "WRITTEN_OFF";
 type PipelineStage = "NEW" | "REMINDER_SENT" | "FOLLOW_UP" | "ESCALATED" | "RESOLVED";
 type NoteType = "GENERAL" | "DISPUTE" | "PROMISE_TO_PAY" | "ESCALATION";
-
-const statusVariant: Record<InvoiceStatus, "default" | "secondary" | "destructive" | "outline"> = {
-  OPEN: "default", OVERDUE: "destructive", PAID: "secondary", DISPUTED: "outline", WRITTEN_OFF: "outline",
-};
 
 const stageLabels: Record<PipelineStage, string> = {
   NEW: "New", REMINDER_SENT: "Reminder Sent", FOLLOW_UP: "Follow Up", ESCALATED: "Escalated", RESOLVED: "Resolved",
@@ -35,25 +33,6 @@ const noteTypeLabels: Record<NoteType, string> = {
 const noteTypeVariant: Record<NoteType, "default" | "secondary" | "destructive" | "outline"> = {
   GENERAL: "secondary", DISPUTE: "destructive", PROMISE_TO_PAY: "default", ESCALATION: "destructive",
 };
-
-const deliveryVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  QUEUED: "outline", SENT: "default", DELIVERED: "secondary", OPENED: "secondary",
-  BOUNCED: "destructive", FAILED: "destructive",
-};
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
-  });
-}
 
 interface InvoiceData {
   id: string;
@@ -118,7 +97,9 @@ export default function InvoiceDetailPage() {
         setInvoice(data.invoice);
         setRelated(data.relatedInvoices || []);
       }
-    } catch { /* handle error */ }
+    } catch (error) {
+      console.error(error);
+    }
     setLoading(false);
   }, [id]);
 
@@ -213,7 +194,7 @@ export default function InvoiceDetailPage() {
             <h1 className="text-3xl font-bold tracking-tight">
               Invoice #{invoice.invoiceNumber || "N/A"}
             </h1>
-            <Badge variant={statusVariant[invoice.status]}>{invoice.status}</Badge>
+            <Badge variant={invoiceStatusVariant[invoice.status]}>{invoice.status}</Badge>
             <Badge variant="outline">{stageLabels[invoice.pipelineStage]}</Badge>
             {invoice.pauseReminders && <Badge variant="secondary">Paused</Badge>}
           </div>
@@ -378,7 +359,7 @@ export default function InvoiceDetailPage() {
                     <p className="text-xs text-muted-foreground">{formatDateTime(log.sentAt)}</p>
                     {log.responseNote && <p className="text-xs text-blue-600 mt-1">Reply: {log.responseNote}</p>}
                   </div>
-                  <Badge variant={deliveryVariant[log.deliveryStatus] || "outline"}>{log.deliveryStatus}</Badge>
+                  <Badge variant={deliveryStatusVariant[log.deliveryStatus] ?? "outline"}>{log.deliveryStatus}</Badge>
                 </div>
               ))}
             </div>
@@ -411,7 +392,7 @@ export default function InvoiceDetailPage() {
                     <TableCell className="text-right">{formatCurrency(inv.totalAmount)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(inv.balance)}</TableCell>
                     <TableCell>{formatDate(inv.dueDate)}</TableCell>
-                    <TableCell><Badge variant={statusVariant[inv.status]}>{inv.status}</Badge></TableCell>
+                    <TableCell><Badge variant={invoiceStatusVariant[inv.status]}>{inv.status}</Badge></TableCell>
                   </TableRow>
                 ))}
               </TableBody>

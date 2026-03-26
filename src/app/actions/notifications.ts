@@ -1,17 +1,25 @@
 "use server";
 
+import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
 import type { NotificationType } from "@/lib/notifications/types";
+
+async function getOrg() {
+  const { orgId } = await auth();
+  if (!orgId) return null;
+  return prisma.organization.findUnique({ where: { clerkOrgId: orgId } });
+}
 
 /**
  * Get recent notifications for an organization.
  */
-export async function getNotifications(orgId: string) {
-  // NOTE: Requires Notification model in Prisma schema.
-  // For MVP, we return an empty array until the schema migration runs.
+export async function getNotifications() {
+  const org = await getOrg();
+  if (!org) return [];
+
   try {
     const notifications = await prisma.notification.findMany({
-      where: { orgId },
+      where: { orgId: org.id },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
@@ -26,9 +34,12 @@ export async function getNotifications(orgId: string) {
  * Mark a single notification as read.
  */
 export async function markAsRead(notificationId: string) {
+  const org = await getOrg();
+  if (!org) return { error: "Unauthorized" };
+
   try {
-    await prisma.notification.update({
-      where: { id: notificationId },
+    await prisma.notification.updateMany({
+      where: { id: notificationId, orgId: org.id },
       data: { read: true },
     });
     return { success: true };
@@ -40,10 +51,13 @@ export async function markAsRead(notificationId: string) {
 /**
  * Mark all notifications as read for an organization.
  */
-export async function markAllAsRead(orgId: string) {
+export async function markAllAsRead() {
+  const org = await getOrg();
+  if (!org) return { error: "Unauthorized" };
+
   try {
     await prisma.notification.updateMany({
-      where: { orgId, read: false },
+      where: { orgId: org.id, read: false },
       data: { read: true },
     });
     return { success: true };
@@ -53,10 +67,11 @@ export async function markAllAsRead(orgId: string) {
 }
 
 /**
- * Create a new notification for an organization.
+ * Create a notification for an organization (internal use — requires org ID directly).
+ * This is called from background jobs/webhooks, not from the client.
  */
 export async function createNotification(
-  orgId: string,
+  targetOrgId: string,
   type: NotificationType,
   title: string,
   message: string
@@ -64,7 +79,7 @@ export async function createNotification(
   try {
     const notification = await prisma.notification.create({
       data: {
-        orgId,
+        orgId: targetOrgId,
         type,
         title,
         message,

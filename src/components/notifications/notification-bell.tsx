@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { NotificationType } from "@/lib/notifications/types";
+import { formatTimeAgo } from "@/lib/utils/format";
 
 interface NotificationItem {
   id: string;
@@ -25,19 +26,6 @@ const iconMap: Record<NotificationType, React.ReactNode> = {
   payment_received: <DollarSign className="h-4 w-4 text-green-600" />,
   subscription_expiring: <CreditCard className="h-4 w-4 text-yellow-600" />,
 };
-
-function timeAgo(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return mins + "m ago";
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return hours + "h ago";
-  const days = Math.floor(hours / 24);
-  return days + "d ago";
-}
 
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -64,16 +52,25 @@ export function NotificationBell() {
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
-  // Close on outside click
+  // Close on outside click or Escape key
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    }
     if (open) {
       document.addEventListener("mousedown", handleClick);
-      return () => document.removeEventListener("mousedown", handleClick);
+      document.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", handleClick);
+        document.removeEventListener("keydown", handleKeyDown);
+      };
     }
   }, [open]);
 
@@ -104,6 +101,9 @@ export function NotificationBell() {
         size="sm"
         className="relative h-9 w-9 p-0"
         onClick={() => setOpen(!open)}
+        aria-label="Notifications"
+        aria-expanded={open}
+        aria-haspopup="true"
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (
@@ -114,7 +114,7 @@ export function NotificationBell() {
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 rounded-lg border bg-card shadow-lg z-50">
+        <div role="menu" className="absolute right-0 top-full mt-2 w-80 rounded-lg border bg-card shadow-lg z-50">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <h3 className="text-sm font-semibold">Notifications</h3>
             {unreadCount > 0 && (
@@ -136,6 +136,7 @@ export function NotificationBell() {
               notifications.slice(0, 20).map((n) => (
                 <button
                   key={n.id}
+                  role="menuitem"
                   onClick={() => !n.read && markAsRead(n.id)}
                   className={
                     "flex w-full items-start gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 " +
@@ -158,7 +159,7 @@ export function NotificationBell() {
                       {n.message}
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
-                      {timeAgo(n.createdAt)}
+                      {formatTimeAgo(n.createdAt)}
                     </p>
                   </div>
                 </button>

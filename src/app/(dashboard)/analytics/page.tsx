@@ -34,8 +34,8 @@ export default function AnalyticsPage() {
         const json = await res.json();
         setData(json);
       }
-    } catch {
-      // Handle error
+    } catch (error) {
+      console.error(error);
     }
     setLoading(false);
   }, []);

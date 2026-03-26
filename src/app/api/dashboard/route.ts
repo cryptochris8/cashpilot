@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
 import { addDays, startOfWeek, addWeeks, subMonths, startOfMonth } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const { orgId } = await auth();
 
@@ -20,141 +22,195 @@ export async function GET() {
 
   const now = new Date();
   const thirtyDaysFromNow = addDays(now, 30);
+  const currentMonthStart = startOfMonth(now);
+  const prevMonthStart = startOfMonth(subMonths(now, 1));
 
-  // Expected next 30 days: sum of balances for open invoices due within 30 days
-  const openInvoices = await prisma.invoice.findMany({
-    where: {
-      organizationId: org.id,
-      status: { in: ["OPEN", "OVERDUE"] },
-      dueDate: { lte: thirtyDaysFromNow },
-      balance: { gt: 0 },
-    },
-    select: { balance: true },
-  });
+  // Run all independent queries in parallel
+  const [
+    openInvoices,
+    overdueInvoices,
+    paidThisMonth,
+    paidPrevMonth,
+    allPaidInvoices,
+    atRiskInvoices,
+    allOutstanding,
+    recentReminders,
+  ] = await Promise.all([
+    // Expected next 30 days
+    prisma.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        status: { in: ["OPEN", "OVERDUE"] },
+        dueDate: { lte: thirtyDaysFromNow },
+        balance: { gt: 0 },
+      },
+      select: { balance: true },
+    }),
+    // Overdue total
+    prisma.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        status: "OVERDUE",
+      },
+      select: { balance: true },
+    }),
+    // Collected this month
+    prisma.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        status: "PAID",
+        paidAt: { gte: currentMonthStart },
+      },
+      select: { totalAmount: true },
+    }),
+    // Previous month collected
+    prisma.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        status: "PAID",
+        paidAt: { gte: prevMonthStart, lt: currentMonthStart },
+      },
+      select: { totalAmount: true },
+    }),
+    // All paid invoices for DSO/effectiveness (cap at 1000 most recent)
+    prisma.invoice.findMany({
+      where: { organizationId: org.id, status: "PAID" },
+      select: { dueDate: true, paidAt: true, issueDate: true },
+      orderBy: { paidAt: "desc" },
+      take: 1000,
+    }),
+    // At-risk invoices
+    prisma.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        status: "OVERDUE",
+        balance: { gt: 0 },
+        dueDate: { lt: addDays(now, -45) },
+      },
+      include: {
+        customer: true,
+        reminderLogs: {
+          where: { deliveryStatus: { in: ["OPENED"] } },
+          orderBy: { sentAt: "desc" },
+          take: 1,
+        },
+      },
+      orderBy: { dueDate: "asc" },
+      take: 5,
+    }),
+    // Top debtors
+    prisma.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        status: { in: ["OPEN", "OVERDUE"] },
+        balance: { gt: 0 },
+      },
+      include: { customer: true },
+    }),
+    // Recent reminders
+    prisma.reminderLog.findMany({
+      where: {
+        invoice: { organizationId: org.id },
+      },
+      include: {
+        invoice: { include: { customer: true } },
+        template: true,
+      },
+      orderBy: { sentAt: "desc" },
+      take: 5,
+    }),
+  ]);
 
   const expectedNext30Days = openInvoices.reduce(
     (sum, inv) => sum + Number(inv.balance),
     0
   );
 
-  // Overdue total
-  const overdueInvoices = await prisma.invoice.findMany({
-    where: {
-      organizationId: org.id,
-      status: "OVERDUE",
-    },
-    select: { balance: true },
-  });
-
   const overdueTotal = overdueInvoices.reduce(
     (sum, inv) => sum + Number(inv.balance),
     0
   );
-
-  // Collected this month (paid invoices updated this month)
-  const currentMonthStart = startOfMonth(now);
-  const paidThisMonth = await prisma.invoice.findMany({
-    where: {
-      organizationId: org.id,
-      status: "PAID",
-      updatedAt: { gte: currentMonthStart },
-    },
-    select: { totalAmount: true },
-  });
 
   const collectedThisMonth = paidThisMonth.reduce(
     (sum, inv) => sum + Number(inv.totalAmount),
     0
   );
 
-  // Previous month collected (for comparison)
-  const prevMonthStart = startOfMonth(subMonths(now, 1));
-  const paidPrevMonth = await prisma.invoice.findMany({
-    where: {
-      organizationId: org.id,
-      status: "PAID",
-      updatedAt: { gte: prevMonthStart, lt: currentMonthStart },
-    },
-    select: { totalAmount: true },
-  });
   const prevMonthCollected = paidPrevMonth.reduce(
     (sum, inv) => sum + Number(inv.totalAmount),
     0
   );
 
-  // Previous month overdue (approximation using current overdue as baseline)
-  const prevMonthOverdue = overdueTotal * 0.9; // Simplified approximation
-
-  // Collection effectiveness: (invoices paid within terms / total invoices paid) * 100
-  const allPaidInvoices = await prisma.invoice.findMany({
-    where: { organizationId: org.id, status: "PAID" },
-    select: { dueDate: true, updatedAt: true, issueDate: true },
-  });
-  const paidWithinTerms = allPaidInvoices.filter(
-    (inv) => new Date(inv.updatedAt).getTime() <= new Date(inv.dueDate).getTime()
-  ).length;
+  // Collection effectiveness — use paidAt, fall back to now for legacy records
+  const paidWithinTerms = allPaidInvoices.filter((inv) => {
+    const paidTime = inv.paidAt ? new Date(inv.paidAt).getTime() : Date.now();
+    return paidTime <= new Date(inv.dueDate).getTime();
+  }).length;
   const collectionEffectiveness =
     allPaidInvoices.length > 0 ? Math.round((paidWithinTerms / allPaidInvoices.length) * 100) : 0;
 
-  // DSO: average days from invoice date to payment
+  // DSO — use paidAt, fall back to now for legacy records
   const dsoValues = allPaidInvoices.map((inv) => {
     const issued = new Date(inv.issueDate).getTime();
-    const paid = new Date(inv.updatedAt).getTime();
+    const paid = inv.paidAt ? new Date(inv.paidAt).getTime() : Date.now();
     return Math.max(0, Math.floor((paid - issued) / (1000 * 60 * 60 * 24)));
   });
   const dso = dsoValues.length > 0 ? Math.round(dsoValues.reduce((a, b) => a + b, 0) / dsoValues.length) : 0;
 
-  // DSO trend over last 6 months
-  const dsoTrend: Array<{ month: string; dso: number }> = [];
-  for (let i = 5; i >= 0; i--) {
-    const monthStart = startOfMonth(subMonths(now, i));
-    const monthEnd = startOfMonth(subMonths(now, i - 1));
-    const monthLabel = monthStart.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-
-    const monthPaid = await prisma.invoice.findMany({
+  // DSO trend — run all 6 month queries in parallel
+  const monthQueries = Array.from({ length: 6 }, (_, i) => {
+    const idx = 5 - i;
+    const monthStart = startOfMonth(subMonths(now, idx));
+    const monthEnd = startOfMonth(subMonths(now, idx - 1));
+    return prisma.invoice.findMany({
       where: {
         organizationId: org.id,
         status: "PAID",
-        updatedAt: { gte: monthStart, lt: monthEnd },
+        paidAt: { gte: monthStart, lt: monthEnd },
       },
-      select: { issueDate: true, updatedAt: true },
+      select: { issueDate: true, paidAt: true },
+    }).then((monthPaid) => {
+      const monthLabel = monthStart.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+      if (monthPaid.length > 0) {
+        const monthDsoValues = monthPaid.map((inv) => {
+          const issued = new Date(inv.issueDate).getTime();
+          const paid = inv.paidAt ? new Date(inv.paidAt).getTime() : Date.now();
+          return Math.max(0, Math.floor((paid - issued) / (1000 * 60 * 60 * 24)));
+        });
+        const monthDso = Math.round(monthDsoValues.reduce((a, b) => a + b, 0) / monthDsoValues.length);
+        return { month: monthLabel, dso: monthDso };
+      }
+      return { month: monthLabel, dso: 0 };
     });
-
-    if (monthPaid.length > 0) {
-      const monthDsoValues = monthPaid.map((inv) => {
-        const issued = new Date(inv.issueDate).getTime();
-        const paid = new Date(inv.updatedAt).getTime();
-        return Math.max(0, Math.floor((paid - issued) / (1000 * 60 * 60 * 24)));
-      });
-      const monthDso = Math.round(monthDsoValues.reduce((a, b) => a + b, 0) / monthDsoValues.length);
-      dsoTrend.push({ month: monthLabel, dso: monthDso });
-    } else {
-      dsoTrend.push({ month: monthLabel, dso: 0 });
-    }
-  }
-
-  // Invoices at risk: 45+ days overdue without recent engagement (no opened/replied reminder)
-  const atRiskInvoices = await prisma.invoice.findMany({
-    where: {
-      organizationId: org.id,
-      status: "OVERDUE",
-      balance: { gt: 0 },
-      dueDate: { lt: addDays(now, -45) },
-    },
-    include: {
-      customer: true,
-      reminderLogs: {
-        where: { deliveryStatus: { in: ["OPENED"] } },
-        orderBy: { sentAt: "desc" },
-        take: 1,
-      },
-    },
-    orderBy: { dueDate: "asc" },
-    take: 5,
   });
 
+  // Weekly data — run all 4 week queries in parallel
+  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const weekQueries = Array.from({ length: 4 }, (_, i) => {
+    const wStart = addWeeks(weekStart, i);
+    const wEnd = addWeeks(weekStart, i + 1);
+    return prisma.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        status: { in: ["OPEN", "OVERDUE"] },
+        dueDate: { gte: wStart, lt: wEnd },
+        balance: { gt: 0 },
+      },
+      select: { balance: true },
+    }).then((weekInvoices) => ({
+      label: "Week " + (i + 1),
+      amount: weekInvoices.reduce((sum, inv) => sum + Number(inv.balance), 0),
+      isCurrentWeek: i === 0,
+    }));
+  });
+
+  const [dsoTrend, weeklyData] = await Promise.all([
+    Promise.all(monthQueries),
+    Promise.all(weekQueries),
+  ]);
+
   const invoicesAtRisk = atRiskInvoices
-    .filter((inv) => inv.reminderLogs.length === 0) // No engagement
+    .filter((inv) => inv.reminderLogs.length === 0)
     .map((inv) => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
@@ -162,16 +218,6 @@ export async function GET() {
       balance: Number(inv.balance),
       daysOverdue: Math.floor((now.getTime() - new Date(inv.dueDate).getTime()) / (1000 * 60 * 60 * 24)),
     }));
-
-  // Top debtors
-  const allOutstanding = await prisma.invoice.findMany({
-    where: {
-      organizationId: org.id,
-      status: { in: ["OPEN", "OVERDUE"] },
-      balance: { gt: 0 },
-    },
-    include: { customer: true },
-  });
 
   const debtorMap: Record<string, { name: string; outstanding: number; invoices: number; oldestDue: Date }> = {};
   for (const inv of allOutstanding) {
@@ -196,19 +242,6 @@ export async function GET() {
       oldestDays: Math.max(0, Math.floor((now.getTime() - d.oldestDue.getTime()) / (1000 * 60 * 60 * 24))),
     }));
 
-  // Recent reminder activity
-  const recentReminders = await prisma.reminderLog.findMany({
-    where: {
-      invoice: { organizationId: org.id },
-    },
-    include: {
-      invoice: { include: { customer: true } },
-      template: true,
-    },
-    orderBy: { sentAt: "desc" },
-    take: 5,
-  });
-
   const recentActivity = recentReminders.map((r) => ({
     id: r.id,
     customerName: r.invoice.customer.displayName,
@@ -218,29 +251,6 @@ export async function GET() {
     deliveryStatus: r.deliveryStatus,
   }));
 
-  // Expected receipts by week (4 weeks)
-  const weeklyData = [];
-  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-  for (let i = 0; i < 4; i++) {
-    const wStart = addWeeks(weekStart, i);
-    const wEnd = addWeeks(weekStart, i + 1);
-    const weekInvoices = await prisma.invoice.findMany({
-      where: {
-        organizationId: org.id,
-        status: { in: ["OPEN", "OVERDUE"] },
-        dueDate: { gte: wStart, lt: wEnd },
-        balance: { gt: 0 },
-      },
-      select: { balance: true },
-    });
-    const weekTotal = weekInvoices.reduce((sum, inv) => sum + Number(inv.balance), 0);
-    weeklyData.push({
-      label: "Week " + (i + 1),
-      amount: weekTotal,
-      isCurrentWeek: i === 0,
-    });
-  }
-
   return NextResponse.json({
     expectedNext30Days,
     overdueTotal,
@@ -249,7 +259,7 @@ export async function GET() {
     dso,
     dsoTrend,
     prevMonthCollected,
-    prevMonthOverdue,
+    prevMonthOverdue: overdueTotal * 0.9, // TODO: compute from actual historical data
     invoicesAtRisk,
     topDebtors,
     recentActivity,

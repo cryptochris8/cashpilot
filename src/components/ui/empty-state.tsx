@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -30,7 +31,7 @@ export function EmptyState({
       {actionLabel && (actionHref || onAction) && (
         actionHref ? (
           <Button asChild>
-            <a href={actionHref}>{actionLabel}</a>
+            <Link href={actionHref}>{actionLabel}</Link>
           </Button>
         ) : (
           <Button onClick={onAction}>{actionLabel}</Button>

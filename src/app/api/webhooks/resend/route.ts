@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import * as Sentry from "@sentry/nextjs";
-import prisma from "@/lib/db";
 import { parseReplyWebhook } from "@/lib/email/reply-handler";
+import { handleResendEvent } from "@/lib/email/webhook-handler";
 import { serverEnv } from "@/lib/env";
 
 interface ResendWebhookEvent {
@@ -52,64 +52,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  const deliveryStatusMap: Record<string, string> = {
-    "email.sent": "SENT",
-    "email.delivered": "DELIVERED",
-    "email.opened": "OPENED",
-    "email.bounced": "BOUNCED",
-    "email.delivery_delayed": "QUEUED",
-    "email.complained": "FAILED",
-  };
+  const result = await handleResendEvent(body);
 
-  const newStatus = deliveryStatusMap[body.type];
-  if (newStatus && body.data.email_id) {
-    // Update the reminder log
-    const updated = await prisma.reminderLog.updateMany({
-      where: { resendMessageId: body.data.email_id },
-      data: {
-        deliveryStatus: newStatus as "QUEUED" | "SENT" | "DELIVERED" | "OPENED" | "BOUNCED" | "FAILED",
-      },
-    });
-
-    // Handle bounce: create note and optionally pause reminders
-    if (body.type === "email.bounced" && updated.count > 0) {
-      const logs = await prisma.reminderLog.findMany({
-        where: { resendMessageId: body.data.email_id },
-        select: { invoiceId: true },
-      });
-
-      for (const log of logs) {
-        const bounceMessage = body.data.bounce?.message ?? "Unknown bounce reason";
-
-        await prisma.invoiceNote.create({
-          data: {
-            invoiceId: log.invoiceId,
-            authorId: "system",
-            content: "Email bounced: " + bounceMessage,
-            noteType: "GENERAL",
-          },
-        });
-
-        await prisma.invoice.update({
-          where: { id: log.invoiceId },
-          data: { pauseReminders: true },
-        });
-
-        await prisma.invoiceNote.create({
-          data: {
-            invoiceId: log.invoiceId,
-            authorId: "system",
-            content: "Reminders auto-paused due to email bounce",
-            noteType: "GENERAL",
-          },
-        });
-      }
-    }
-
-    // Handle email opened - potential engagement indicator
-    if (body.type === "email.opened" && updated.count > 0) {
-      console.log("[resend-webhook] Email opened:", body.data.email_id);
-    }
+  // Handle email opened - potential engagement indicator
+  if (body.type === "email.opened" && result.updatedCount && result.updatedCount > 0) {
+    console.log("[resend-webhook] Email opened:", body.data.email_id);
   }
 
   // Handle reply/engagement events

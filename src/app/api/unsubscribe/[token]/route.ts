@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
@@ -49,7 +57,7 @@ button:hover{background:#dc2626}</style>
 <body>
 <div class="card">
 <h1>Unsubscribe from Reminders</h1>
-<p>Are you sure you want to unsubscribe <strong>${customer.displayName}</strong> from all payment reminder emails?</p>
+<p>Are you sure you want to unsubscribe <strong>${escapeHtml(customer.displayName)}</strong> from all payment reminder emails?</p>
 <form method="POST">
 <button type="submit">Yes, Unsubscribe Me</button>
 </form>
@@ -99,7 +107,7 @@ export async function POST(
 <div class="card">
 <div class="check">&#10003;</div>
 <h1>Unsubscribed Successfully</h1>
-<p><strong>${customer.displayName}</strong> has been unsubscribed from all payment reminder emails. You will no longer receive automated reminders.</p>
+<p><strong>${escapeHtml(customer.displayName)}</strong> has been unsubscribed from all payment reminder emails. You will no longer receive automated reminders.</p>
 </div>
 </body></html>`,
     { headers: { "Content-Type": "text/html" } }

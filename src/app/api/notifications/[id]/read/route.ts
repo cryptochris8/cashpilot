@@ -11,11 +11,19 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const org = await prisma.organization.findUnique({
+    where: { clerkOrgId: orgId },
+  });
+
+  if (!org) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const { id } = await params;
 
   try {
-    await prisma.notification.update({
-      where: { id },
+    await prisma.notification.updateMany({
+      where: { id, orgId: org.id },
       data: { read: true },
     });
     return NextResponse.json({ success: true });

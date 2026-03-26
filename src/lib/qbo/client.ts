@@ -190,6 +190,13 @@ export class QBOClient {
     return this.query<QboCustomer>("Customer", queryString, "Customer");
   }
 
+  async fetchCustomersByIds(ids: string[]): Promise<QboCustomer[]> {
+    if (ids.length === 0) return [];
+    const idList = ids.map((id) => "'" + id + "'").join(", ");
+    const queryString = "SELECT * FROM Customer WHERE Id IN (" + idList + ") AND Active = true";
+    return this.query<QboCustomer>("Customer", queryString, "Customer");
+  }
+
   async fetchSingleInvoice(invoiceId: string): Promise<QboInvoice> {
     const data = await withRetry(() => this.request<{ Invoice: QboInvoice }>("invoice/" + invoiceId));
     return data.Invoice;

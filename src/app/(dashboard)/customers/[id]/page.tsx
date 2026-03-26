@@ -13,24 +13,10 @@ import { PaymentHistory } from "@/components/customers/payment-history";
 import {
   ArrowLeft, Loader2, Save, Mail, MailX, DollarSign, FileText, Clock, TrendingUp,
 } from "lucide-react";
+import { formatCurrency, formatDate } from "@/lib/utils/format";
+import { invoiceStatusVariant, deliveryStatusVariant } from "@/lib/utils/badge-variants";
 
 type InvoiceStatus = "OPEN" | "OVERDUE" | "PAID" | "DISPUTED" | "WRITTEN_OFF";
-
-const statusVariant: Record<InvoiceStatus, "default" | "secondary" | "destructive" | "outline"> = {
-  OPEN: "default",
-  OVERDUE: "destructive",
-  PAID: "secondary",
-  DISPUTED: "outline",
-  WRITTEN_OFF: "outline",
-};
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
 
 interface CustomerData {
   id: string;
@@ -49,6 +35,8 @@ interface CustomerData {
     balance: { toString(): string };
     status: InvoiceStatus;
     pipelineStage: string;
+    paidAt: string | null;
+    paidDate?: string | null;
     updatedAt: string;
     reminderLogs: Array<{
       id: string;
@@ -78,7 +66,9 @@ export default function CustomerDetailPage() {
         setCustomer(data);
         setNotes(data.notes || "");
       }
-    } catch { /* handle error */ }
+    } catch (error) {
+      console.error(error);
+    }
     setLoading(false);
   }, [id]);
 
@@ -120,11 +110,14 @@ export default function CustomerDetailPage() {
 
   const dtpArr = paidInvoices.map((inv) => {
     const issued = new Date(inv.issueDate).getTime();
-    const paid = new Date(inv.updatedAt).getTime();
+    const paid = (inv.paidAt || inv.paidDate) ? new Date((inv.paidAt ?? inv.paidDate)!).getTime() : new Date(inv.updatedAt).getTime();
     return Math.max(0, Math.floor((paid - issued) / (1000 * 60 * 60 * 24)));
   });
   const avgDaysToPay = dtpArr.length > 0 ? Math.round(dtpArr.reduce((a, b) => a + b, 0) / dtpArr.length) : 0;
-  const onTimeCount = paidInvoices.filter((inv) => new Date(inv.updatedAt) <= new Date(inv.dueDate)).length;
+  const onTimeCount = paidInvoices.filter((inv) => {
+    const paidStr = inv.paidAt ?? inv.paidDate ?? inv.updatedAt;
+    return new Date(paidStr) <= new Date(inv.dueDate);
+  }).length;
   const onTimePercent = paidInvoices.length > 0 ? Math.round((onTimeCount / paidInvoices.length) * 100) : 100;
   let risk: "low" | "medium" | "high" = "low";
   if (onTimePercent < 50) risk = "high";
@@ -138,22 +131,19 @@ export default function CustomerDetailPage() {
   const rc = riskCfg[risk];
 
   const paymentHistory = paidInvoices.map((inv) => {
-    const d = Math.max(0, Math.floor((new Date(inv.updatedAt).getTime() - new Date(inv.issueDate).getTime()) / (1000 * 60 * 60 * 24)));
+    const paidStr = inv.paidAt ?? inv.paidDate ?? inv.updatedAt;
+    const paidTime = new Date(paidStr).getTime();
+    const d = Math.max(0, Math.floor((paidTime - new Date(inv.issueDate).getTime()) / (1000 * 60 * 60 * 24)));
     return {
       id: inv.id, invoiceNumber: inv.invoiceNumber, totalAmount: Number(inv.totalAmount),
-      dueDate: inv.dueDate, paidDate: inv.updatedAt, daysToPay: d,
-      wasOnTime: new Date(inv.updatedAt) <= new Date(inv.dueDate),
+      dueDate: inv.dueDate, paidDate: paidStr, daysToPay: d,
+      wasOnTime: paidTime <= new Date(inv.dueDate).getTime(),
     };
   });
 
   const allReminders = allInvoices.flatMap((inv) =>
     (inv.reminderLogs || []).map((r) => ({ ...r, invoiceNumber: inv.invoiceNumber }))
   ).sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
-
-  const dvMap: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-    QUEUED: "outline", SENT: "default", DELIVERED: "secondary", OPENED: "secondary",
-    BOUNCED: "destructive", FAILED: "destructive",
-  };
 
   return (
     <div className="space-y-6">
@@ -236,7 +226,7 @@ export default function CustomerDetailPage() {
                         <TableCell className="text-right">{formatCurrency(Number(inv.totalAmount))}</TableCell>
                         <TableCell className="text-right">{formatCurrency(Number(inv.balance))}</TableCell>
                         <TableCell>{formatDate(inv.dueDate)}</TableCell>
-                        <TableCell><Badge variant={statusVariant[inv.status]}>{inv.status}</Badge></TableCell>
+                        <TableCell><Badge variant={invoiceStatusVariant[inv.status]}>{inv.status}</Badge></TableCell>
                         <TableCell><Badge variant="outline">{inv.pipelineStage}</Badge></TableCell>
                       </TableRow>
                     ))}
@@ -269,7 +259,7 @@ export default function CustomerDetailPage() {
                         <TableCell>#{r.invoiceNumber || "N/A"}</TableCell>
                         <TableCell>{r.template?.name || r.subject || "Manual"}</TableCell>
                         <TableCell>{formatDate(r.sentAt)}</TableCell>
-                        <TableCell><Badge variant={dvMap[r.deliveryStatus] || "outline"}>{r.deliveryStatus}</Badge></TableCell>
+                        <TableCell><Badge variant={deliveryStatusVariant[r.deliveryStatus] ?? "outline"}>{r.deliveryStatus}</Badge></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

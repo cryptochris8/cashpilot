@@ -13,6 +13,7 @@ import { CashForecastChart } from "@/components/dashboard/cash-forecast-chart";
 import { DsoChart } from "@/components/dashboard/dso-chart";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { formatCurrency } from "@/lib/utils/format";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import Link from "next/link";
 
 interface DashboardData {
@@ -59,12 +60,17 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch("/api/dashboard");
       if (res.ok) { setData(await res.json()); }
-    } catch { /* error */ }
+      else { setFetchError(true); }
+    } catch (error) {
+      console.error(error);
+      setFetchError(true);
+    }
     setLoading(false);
   }, []);
 
@@ -75,12 +81,29 @@ export default function DashboardPage() {
     try {
       await fetch("/api/qbo/sync", { method: "POST" });
       await fetchData();
-    } catch { /* error */ }
+    } catch (error) {
+      console.error(error);
+    }
     setSyncing(false);
   };
 
   if (loading) {
     return (<div className="flex h-[400px] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>);
+  }
+
+  if (fetchError && !data) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Cash Dashboard</h1>
+        </div>
+        <Alert variant="destructive">
+          <AlertDescription>
+            Failed to load dashboard data. Please refresh the page or try again later.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
   }
 
   const collectedChange = data?.prevMonthCollected ? ((data.collectedThisMonth - data.prevMonthCollected) / data.prevMonthCollected * 100) : 0;

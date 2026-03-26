@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, AlertTriangle, Bell, Download, UserCog } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Download, UserCog } from "lucide-react";
 import { QboConnectionCard } from "@/components/settings/qbo-connection-card";
 import { BillingCard } from "@/components/settings/billing-card";
 import { EmailSettingsCard } from "@/components/settings/email-settings-card";
@@ -78,45 +78,7 @@ function SettingsContent() {
 
       <Separator />
 
-      {/* 4. Notification Preferences */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>Configure which notifications you receive in-app.</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 text-sm">
-            <label className="flex items-center gap-3">
-              <input type="checkbox" defaultChecked className="rounded" />
-              <span>Sync completed notifications</span>
-            </label>
-            <label className="flex items-center gap-3">
-              <input type="checkbox" defaultChecked className="rounded" />
-              <span>Reminder delivery updates</span>
-            </label>
-            <label className="flex items-center gap-3">
-              <input type="checkbox" defaultChecked className="rounded" />
-              <span>Payment received notifications</span>
-            </label>
-            <label className="flex items-center gap-3">
-              <input type="checkbox" defaultChecked className="rounded" />
-              <span>Subscription and billing alerts</span>
-            </label>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Notification preferences are saved automatically.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Separator />
-
-      {/* 5. Data Export */}
+      {/* 4. Data Export */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">

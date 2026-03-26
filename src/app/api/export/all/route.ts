@@ -14,8 +14,26 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const org = await prisma.organization.findUnique({
+  // Lightweight org lookup first for rate limiting before expensive query
+  const orgLookup = await prisma.organization.findUnique({
     where: { clerkOrgId: orgId },
+    select: { id: true },
+  });
+
+  if (!orgLookup) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  const limit = await checkRateLimit(rateLimitKey(orgLookup.id, "export"), RATE_LIMITS.export);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+    );
+  }
+
+  const org = await prisma.organization.findUnique({
+    where: { id: orgLookup.id },
     include: {
       qboConnection: {
         select: {
@@ -112,14 +130,6 @@ export async function GET() {
 
   if (!org) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
-  }
-
-  const limit = checkRateLimit(rateLimitKey(org.id, "export"), RATE_LIMITS.export);
-  if (!limit.allowed) {
-    return NextResponse.json(
-      { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
-      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
-    );
   }
 
   const exportData = {

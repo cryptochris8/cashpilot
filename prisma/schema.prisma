@@ -68,6 +68,7 @@ model Organization {
   cadences         ReminderCadence[]
   subscription     Subscription?
   emailSettings    EmailSettings?
+  notifications    Notification[]
 }
 
 model QuickBooksConnection {
@@ -120,6 +121,7 @@ model Invoice {
   pipelineStage       PipelineStage  @default(NEW)
   lastReminderSentAt  DateTime?
   pauseReminders      Boolean        @default(false)
+  paidAt              DateTime?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -127,6 +129,9 @@ model Invoice {
   invoiceNotes        InvoiceNote[]
 
   @@unique([organizationId, qboInvoiceId])
+  @@index([organizationId, status])
+  @@index([organizationId, dueDate])
+  @@index([organizationId, pipelineStage])
 }
 
 model ReminderTemplate {
@@ -183,6 +188,9 @@ model ReminderLog {
   responseNote    String?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
+
+  @@index([invoiceId, deliveryStatus])
+  @@index([resendMessageId])
 }
 
 model InvoiceNote {
@@ -207,6 +215,8 @@ model Subscription {
   trialEnd             DateTime?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
+
+  @@index([stripeCustomerId])
 }
 
 model EmailSettings {
@@ -220,17 +230,15 @@ model EmailSettings {
   updatedAt       DateTime @updatedAt
 }
 
-// Phase 6: In-app notification system
-// NOTE: Run `npx prisma migrate dev --name add-notifications` after adding this model
-// Then run `npx prisma generate` to update the client
 model Notification {
-  id        String   @id @default(uuid())
-  orgId     String
-  type      String   // sync_complete, sync_error, reminder_sent, reminder_bounced, payment_received, subscription_expiring
-  title     String
-  message   String
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id             String       @id @default(uuid())
+  orgId          String
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  type           String
+  title          String
+  message        String
+  read           Boolean      @default(false)
+  createdAt      DateTime     @default(now())
 
   @@index([orgId, createdAt])
   @@index([orgId, read])

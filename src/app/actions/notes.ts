@@ -3,6 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
 import type { NoteType } from "@prisma/client";
+import { z } from "zod/v4";
 
 async function getOrg() {
   const { orgId, userId } = await auth();
@@ -19,6 +20,13 @@ export async function createNote(
   content: string,
   noteType: NoteType = "GENERAL"
 ) {
+  const schema = z.object({
+    content: z.string().min(1).max(5000),
+    noteType: z.enum(["GENERAL", "DISPUTE", "PROMISE_TO_PAY", "ESCALATION"]),
+  });
+  const parsed = schema.safeParse({ content, noteType });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   const ctx = await getOrg();
   if (!ctx) return { error: "Unauthorized" };
 

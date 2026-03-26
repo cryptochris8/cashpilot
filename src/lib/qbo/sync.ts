@@ -72,6 +72,7 @@ export function mapQboInvoiceToLocal(
     balance: qboInvoice.Balance,
     status,
     pipelineStage,
+    ...(status === InvoiceStatus.PAID ? { paidAt: new Date() } : {}),
   };
 }
 
@@ -133,23 +134,23 @@ export async function initialSync(orgId: string): Promise<SyncResult> {
     // Fetch all open invoices (Balance > 0)
     const qboInvoices = await client.fetchInvoices({ openOnly: true });
 
+    // Build customer map to avoid N+1 queries
+    const allCustomers = await prisma.customer.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, qboCustomerId: true },
+    });
+    const customerMap = new Map(allCustomers.map((c) => [c.qboCustomerId, c.id]));
+
     for (const qboInvoice of qboInvoices) {
       try {
-        const customer = await prisma.customer.findUnique({
-          where: {
-            organizationId_qboCustomerId: {
-              organizationId: orgId,
-              qboCustomerId: qboInvoice.CustomerRef.value,
-            },
-          },
-        });
+        const customerId = customerMap.get(qboInvoice.CustomerRef.value);
 
-        if (!customer) {
+        if (!customerId) {
           errors.push("Customer not found for invoice " + qboInvoice.Id);
           continue;
         }
 
-        const mapped = mapQboInvoiceToLocal(qboInvoice, orgId, customer.id);
+        const mapped = mapQboInvoiceToLocal(qboInvoice, orgId, customerId);
 
         await prisma.invoice.upsert({
           where: {
@@ -233,10 +234,9 @@ export async function incrementalSync(orgId: string): Promise<SyncResult> {
       customerIds.add(inv.CustomerRef.value);
     }
 
-    // Fetch and upsert customers for changed invoices
+    // Fetch and upsert only the customers referenced by changed invoices
     if (customerIds.size > 0) {
-      const qboCustomers = await client.fetchCustomers();
-      const relevantCustomers = qboCustomers.filter((c) => customerIds.has(c.Id));
+      const relevantCustomers = await client.fetchCustomersByIds([...customerIds]);
       for (const qboCustomer of relevantCustomers) {
         try {
           await prisma.customer.upsert({
@@ -266,37 +266,42 @@ export async function incrementalSync(orgId: string): Promise<SyncResult> {
       }
     }
 
+    // Build maps to avoid N+1 queries
+    const allCustomers = await prisma.customer.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, qboCustomerId: true },
+    });
+    const customerMap = new Map(allCustomers.map((c) => [c.qboCustomerId, c.id]));
+
+    // Pre-fetch existing invoices for pipeline stage preservation
+    const qboInvoiceIds = qboInvoices.map((inv) => inv.Id);
+    const existingInvoices = await prisma.invoice.findMany({
+      where: {
+        organizationId: orgId,
+        qboInvoiceId: { in: qboInvoiceIds },
+      },
+      select: { qboInvoiceId: true, pipelineStage: true, status: true },
+    });
+    const existingInvoiceMap = new Map(
+      existingInvoices.map((inv) => [inv.qboInvoiceId, inv])
+    );
+
     // Upsert changed invoices
     for (const qboInvoice of qboInvoices) {
       try {
-        const customer = await prisma.customer.findUnique({
-          where: {
-            organizationId_qboCustomerId: {
-              organizationId: orgId,
-              qboCustomerId: qboInvoice.CustomerRef.value,
-            },
-          },
-        });
+        const customerId = customerMap.get(qboInvoice.CustomerRef.value);
 
-        if (!customer) {
+        if (!customerId) {
           errors.push("Customer not found for invoice " + qboInvoice.Id);
           continue;
         }
 
-        // Check if invoice already exists locally for pipeline stage preservation
-        const existingInvoice = await prisma.invoice.findUnique({
-          where: {
-            organizationId_qboInvoiceId: {
-              organizationId: orgId,
-              qboInvoiceId: qboInvoice.Id,
-            },
-          },
-        });
+        const existingInvoice = existingInvoiceMap.get(qboInvoice.Id);
 
         const mapped = mapQboInvoiceToLocal(
           qboInvoice,
           orgId,
-          customer.id,
+          customerId,
           existingInvoice?.pipelineStage
         );
 

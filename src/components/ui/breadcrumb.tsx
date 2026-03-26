@@ -34,12 +34,12 @@ export function Breadcrumb() {
   }
 
   return (
-    <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
       {crumbs.map((crumb, i) => (
         <span key={crumb.href} className="flex items-center gap-1">
           {i > 0 && <ChevronRight className="h-3 w-3" />}
           {i === crumbs.length - 1 ? (
-            <span className="font-medium text-foreground">{crumb.label}</span>
+            <span className="font-medium text-foreground" aria-current="page">{crumb.label}</span>
           ) : (
             <Link href={crumb.href} className="hover:text-foreground transition-colors">
               {i === 0 ? <Home className="h-3.5 w-3.5" /> : crumb.label}

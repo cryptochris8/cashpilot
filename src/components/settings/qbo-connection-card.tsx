@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   Unlink,
 } from "lucide-react";
+import { formatTimeAgo } from "@/lib/utils/format";
 
 interface QboStatus {
   connected: boolean;
@@ -113,20 +114,6 @@ export function QboConnectionCard() {
     } finally {
       setDisconnecting(false);
     }
-  };
-
-  const formatTimeAgo = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return diffMins + " minute" + (diffMins === 1 ? "" : "s") + " ago";
-    const diffHrs = Math.floor(diffMins / 60);
-    if (diffHrs < 24) return diffHrs + " hour" + (diffHrs === 1 ? "" : "s") + " ago";
-    const diffDays = Math.floor(diffHrs / 24);
-    return diffDays + " day" + (diffDays === 1 ? "" : "s") + " ago";
   };
 
   return (

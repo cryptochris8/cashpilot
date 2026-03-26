@@ -18,6 +18,8 @@ import {
   RefreshCw, Loader2, LinkIcon, CheckCircle2, AlertTriangle, Search,
   Send, Pause, Play, Download, X,
 } from "lucide-react";
+import { formatCurrency, formatDate, getDaysOverdue, formatTimeAgo } from "@/lib/utils/format";
+import { invoiceStatusVariant } from "@/lib/utils/badge-variants";
 
 type InvoiceStatusType = "OPEN" | "OVERDUE" | "PAID" | "DISPUTED" | "WRITTEN_OFF";
 type PipelineStageType = "NEW" | "REMINDER_SENT" | "FOLLOW_UP" | "ESCALATED" | "RESOLVED";
@@ -53,44 +55,6 @@ interface SyncResult {
   invoicesPaid?: number;
 }
 
-const statusVariant: Record<InvoiceStatusType, "default" | "secondary" | "destructive" | "outline"> = {
-  OPEN: "default",
-  OVERDUE: "destructive",
-  PAID: "secondary",
-  DISPUTED: "outline",
-  WRITTEN_OFF: "outline",
-};
-
-function formatCurrency(amount: string | number): string {
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(num);
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-  });
-}
-
-function getDaysOverdue(dateStr: string): number {
-  const due = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - due.getTime();
-  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
-}
-
-function formatTimeAgo(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return diffMins + "m ago";
-  const diffHrs = Math.floor(diffMins / 60);
-  if (diffHrs < 24) return diffHrs + "h ago";
-  return Math.floor(diffHrs / 24) + "d ago";
-}
-
 export default function InvoicesPage() {
   const router = useRouter();
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
@@ -108,19 +72,19 @@ export default function InvoicesPage() {
   const fetchData = useCallback(async () => {
     try {
       const [invoicesRes, statusRes] = await Promise.all([
-        fetch("/api/invoices"),
+        fetch("/api/invoices?limit=100"),
         fetch("/api/qbo/status"),
       ]);
       if (invoicesRes.ok) {
         const data = await invoicesRes.json();
-        setInvoices(data);
+        setInvoices(data.invoices ?? data);
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
         setQboStatus(data);
       }
-    } catch {
-      // Handle fetch error
+    } catch (error) {
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -179,7 +143,9 @@ export default function InvoicesPage() {
       });
       setSelected(new Set());
       await fetchData();
-    } catch { /* handle error */ }
+    } catch (error) {
+      console.error(error);
+    }
     setBulkLoading(false);
   };
 
@@ -323,7 +289,7 @@ export default function InvoicesPage() {
           <Button size="sm" variant="outline" onClick={handleExportSelected}>
             <Download className="mr-1 h-3 w-3" /> Export
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} aria-label="Clear selection">
             <X className="h-3 w-3" />
           </Button>
         </div>
@@ -384,16 +350,44 @@ export default function InvoicesPage() {
                   </TableHead>
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead className="text-right cursor-pointer" onClick={() => handleSort("totalAmount")}>
+                  <TableHead
+                    className="text-right cursor-pointer"
+                    onClick={() => handleSort("totalAmount")}
+                    tabIndex={0}
+                    role="columnheader"
+                    aria-sort={sortField === "totalAmount" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("totalAmount"); } }}
+                  >
                     Amount {sortField === "totalAmount" && (sortDir === "asc" ? "^" : "v")}
                   </TableHead>
-                  <TableHead className="text-right cursor-pointer" onClick={() => handleSort("balance")}>
+                  <TableHead
+                    className="text-right cursor-pointer"
+                    onClick={() => handleSort("balance")}
+                    tabIndex={0}
+                    role="columnheader"
+                    aria-sort={sortField === "balance" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("balance"); } }}
+                  >
                     Balance {sortField === "balance" && (sortDir === "asc" ? "^" : "v")}
                   </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("dueDate")}>
+                  <TableHead
+                    className="cursor-pointer"
+                    onClick={() => handleSort("dueDate")}
+                    tabIndex={0}
+                    role="columnheader"
+                    aria-sort={sortField === "dueDate" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("dueDate"); } }}
+                  >
                     Due Date {sortField === "dueDate" && (sortDir === "asc" ? "^" : "v")}
                   </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("daysOverdue")}>
+                  <TableHead
+                    className="cursor-pointer"
+                    onClick={() => handleSort("daysOverdue")}
+                    tabIndex={0}
+                    role="columnheader"
+                    aria-sort={sortField === "daysOverdue" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("daysOverdue"); } }}
+                  >
                     Days Overdue {sortField === "daysOverdue" && (sortDir === "asc" ? "^" : "v")}
                   </TableHead>
                   <TableHead>Status</TableHead>
@@ -430,7 +424,7 @@ export default function InvoicesPage() {
                         : "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusVariant[invoice.status]}>
+                      <Badge variant={invoiceStatusVariant[invoice.status]}>
                         {invoice.status}
                       </Badge>
                     </TableCell>

@@ -20,7 +20,7 @@ export async function POST(
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
   }
 
-  const limit = checkRateLimit(rateLimitKey(org.id, "invoiceRemind"), RATE_LIMITS.invoiceRemind);
+  const limit = await checkRateLimit(rateLimitKey(org.id, "invoiceRemind"), RATE_LIMITS.invoiceRemind);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },
@@ -122,7 +122,13 @@ export async function POST(
     emailBody = "Hi " + invoice.customer.displayName + ",\n\nThis is a reminder about invoice " + (invoice.invoiceNumber ?? "N/A") + " for " + formatCurrency(Number(invoice.balance)) + " due on " + formatDate(invoice.dueDate) + ".\n\nPlease arrange payment at your earliest convenience.\n\nThank you,\n" + org.name;
   }
 
-  const result = await sendReminder(invoice.customer.email, subject, emailBody);
+  const result = await sendReminder({
+    to: invoice.customer.email,
+    subject,
+    body: emailBody,
+    orgId: org.id,
+    customerId: invoice.customerId,
+  });
 
   if (result.error) {
     return NextResponse.json({ error: result.error }, { status: 500 });

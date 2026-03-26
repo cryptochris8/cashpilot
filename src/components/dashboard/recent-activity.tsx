@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils/format";
+import { deliveryStatusVariant } from "@/lib/utils/badge-variants";
 
 interface ActivityItem {
   id: string;
@@ -15,15 +16,6 @@ interface ActivityItem {
 interface RecentActivityProps {
   activities: ActivityItem[];
 }
-
-const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  QUEUED: "outline",
-  SENT: "default",
-  DELIVERED: "secondary",
-  OPENED: "secondary",
-  BOUNCED: "destructive",
-  FAILED: "destructive",
-};
 
 export function RecentActivity({ activities }: RecentActivityProps) {
   if (activities.length === 0) {
@@ -45,7 +37,7 @@ export function RecentActivity({ activities }: RecentActivityProps) {
             </p>
             <p className="text-xs text-muted-foreground">{formatDate(item.sentAt)}</p>
           </div>
-          <Badge variant={statusVariant[item.deliveryStatus] ?? "outline"} className="text-xs">
+          <Badge variant={deliveryStatusVariant[item.deliveryStatus] ?? "outline"} className="text-xs">
             {item.deliveryStatus}
           </Badge>
         </div>

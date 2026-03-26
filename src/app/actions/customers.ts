@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
+import { z } from "zod/v4";
 
 async function getOrg() {
   const { orgId } = await auth();
@@ -34,17 +35,17 @@ export async function getCustomerDetail(customerId: string) {
 
   const totalOutstanding = openInvoices.reduce((sum, inv) => sum + Number(inv.balance), 0);
 
-  // Calculate average days to pay for paid invoices
+  // Calculate average days to pay for paid invoices — use paidAt, fall back to now for legacy
   const daysToPay = paidInvoices.map((inv) => {
     const issued = new Date(inv.issueDate).getTime();
-    const paid = new Date(inv.updatedAt).getTime();
+    const paid = inv.paidAt ? new Date(inv.paidAt).getTime() : Date.now();
     return Math.max(0, Math.floor((paid - issued) / (1000 * 60 * 60 * 24)));
   });
   const avgDaysToPay = daysToPay.length > 0 ? Math.round(daysToPay.reduce((a, b) => a + b, 0) / daysToPay.length) : 0;
 
   // On-time percentage
   const onTimeCount = paidInvoices.filter((inv) => {
-    const paid = new Date(inv.updatedAt).getTime();
+    const paid = inv.paidAt ? new Date(inv.paidAt).getTime() : Date.now();
     const due = new Date(inv.dueDate).getTime();
     return paid <= due;
   }).length;
@@ -95,13 +96,17 @@ export async function getCustomerDetail(customerId: string) {
       balance: Number(inv.balance),
       status: inv.status,
       pipelineStage: inv.pipelineStage,
-      paidDate: inv.status === "PAID" ? inv.updatedAt.toISOString() : null,
+      paidDate: inv.status === "PAID" ? (inv.paidAt ?? inv.updatedAt).toISOString() : null,
     })),
     reminders: allReminders.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime()),
   };
 }
 
 export async function updateCustomerNotes(customerId: string, notes: string) {
+  const schema = z.string().max(10000);
+  const parsed = schema.safeParse(notes);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   const org = await getOrg();
   await prisma.customer.updateMany({
     where: { id: customerId, organizationId: org.id },
@@ -131,21 +136,22 @@ export async function getPaymentHistory(customerId: string) {
       organizationId: org.id,
       status: "PAID",
     },
-    orderBy: { updatedAt: "desc" },
+    orderBy: { paidAt: "desc" },
   });
 
   return invoices.map((inv) => {
+    const paidTime = inv.paidAt ? new Date(inv.paidAt).getTime() : Date.now();
     const daysToPay = Math.max(
       0,
-      Math.floor((new Date(inv.updatedAt).getTime() - new Date(inv.issueDate).getTime()) / (1000 * 60 * 60 * 24))
+      Math.floor((paidTime - new Date(inv.issueDate).getTime()) / (1000 * 60 * 60 * 24))
     );
-    const wasOnTime = new Date(inv.updatedAt).getTime() <= new Date(inv.dueDate).getTime();
+    const wasOnTime = paidTime <= new Date(inv.dueDate).getTime();
     return {
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
       totalAmount: Number(inv.totalAmount),
       dueDate: inv.dueDate.toISOString(),
-      paidDate: inv.updatedAt.toISOString(),
+      paidDate: (inv.paidAt ?? inv.updatedAt).toISOString(),
       daysToPay,
       wasOnTime,
     };

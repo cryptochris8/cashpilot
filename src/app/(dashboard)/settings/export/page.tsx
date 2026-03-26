@@ -28,8 +28,8 @@ export default function ExportPage() {
         a.click();
         URL.revokeObjectURL(url);
       }
-    } catch {
-      // Handle error
+    } catch (error) {
+      console.error(error);
     }
     setExporting(false);
   };

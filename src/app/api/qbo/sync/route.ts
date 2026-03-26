@@ -41,7 +41,7 @@ export async function POST() {
     );
   }
 
-  const limit = checkRateLimit(rateLimitKey(org.id, "qboSync"), RATE_LIMITS.qboSync);
+  const limit = await checkRateLimit(rateLimitKey(org.id, "qboSync"), RATE_LIMITS.qboSync);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: "Too many requests. Retry in " + limit.retryAfterSeconds + "s." },

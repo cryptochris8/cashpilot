@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import * as Sentry from "@sentry/nextjs";
 import prisma from "@/lib/db";
+import { mapStripeStatus, getSubscriptionPeriodEnd } from "@/lib/stripe/utils";
 
 function getStripeClient(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -9,36 +10,6 @@ function getStripeClient(): Stripe {
     throw new Error("STRIPE_SECRET_KEY environment variable is required");
   }
   return new Stripe(key);
-}
-
-function mapStripeStatus(
-  status: string
-): "ACTIVE" | "TRIALING" | "PAST_DUE" | "CANCELED" | "UNPAID" {
-  switch (status) {
-    case "active":
-      return "ACTIVE";
-    case "trialing":
-      return "TRIALING";
-    case "past_due":
-      return "PAST_DUE";
-    case "canceled":
-      return "CANCELED";
-    default:
-      return "UNPAID";
-  }
-}
-
-function getSubscriptionPeriodEnd(sub: Stripe.Subscription): Date | null {
-  // In Stripe v20+, current_period_end is on SubscriptionItem, not Subscription
-  const item = sub.items?.data?.[0];
-  if (item && "current_period_end" in item && typeof item.current_period_end === "number") {
-    return new Date(item.current_period_end * 1000);
-  }
-  // Fallback to cancel_at if available
-  if (sub.cancel_at) {
-    return new Date(sub.cancel_at * 1000);
-  }
-  return null;
 }
 
 export async function POST(request: NextRequest) {

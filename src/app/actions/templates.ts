@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
 import { renderTemplate, sendReminder } from "@/lib/email/send";
 import { DEFAULT_TEMPLATES } from "@/lib/email/templates";
+import { z } from "zod/v4";
 
 async function getOrg() {
   const { orgId } = await auth();
@@ -51,6 +52,14 @@ export async function createTemplate(data: {
   subject: string;
   body: string;
 }) {
+  const schema = z.object({
+    name: z.string().min(1).max(200),
+    subject: z.string().min(1).max(500),
+    body: z.string().min(1).max(50000),
+  });
+  const parsed = schema.safeParse(data);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
 
@@ -75,6 +84,14 @@ export async function updateTemplate(
     body?: string;
   }
 ) {
+  const schema = z.object({
+    name: z.string().min(1).max(200).optional(),
+    subject: z.string().min(1).max(500).optional(),
+    body: z.string().min(1).max(50000).optional(),
+  });
+  const parsed = schema.safeParse(data);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
 
@@ -109,6 +126,10 @@ export async function deleteTemplate(templateId: string) {
 }
 
 export async function sendTestEmail(templateId: string, toEmail: string) {
+  const schema = z.string().email();
+  const parsed = schema.safeParse(toEmail);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   const org = await getOrg();
   if (!org) return { error: "Unauthorized" };
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { deliveryStatusVariant } from "@/lib/utils/badge-variants";
 
 interface ReminderData {
   id: string;
@@ -15,15 +16,6 @@ interface ReminderData {
 interface ReminderListProps {
   reminders: ReminderData[];
 }
-
-const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  QUEUED: "outline",
-  SENT: "default",
-  DELIVERED: "secondary",
-  OPENED: "secondary",
-  BOUNCED: "destructive",
-  FAILED: "destructive",
-};
 
 export function ReminderList({ reminders }: ReminderListProps) {
   return (
@@ -45,7 +37,7 @@ export function ReminderList({ reminders }: ReminderListProps) {
               Sent: {new Date(reminder.sentAt).toLocaleString()}
             </p>
           </div>
-          <Badge variant={statusVariant[reminder.deliveryStatus] ?? "outline"}>
+          <Badge variant={deliveryStatusVariant[reminder.deliveryStatus] ?? "outline"}>
             {reminder.deliveryStatus}
           </Badge>
         </div>

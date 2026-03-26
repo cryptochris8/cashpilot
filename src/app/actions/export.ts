@@ -1,14 +1,18 @@
 "use server";
 
+import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/db";
 
 /**
  * Generate a complete data export for an organization.
  * Used for GDPR/data portability compliance.
  */
-export async function exportAllData(orgId: string) {
+export async function exportAllData() {
+  const { orgId } = await auth();
+  if (!orgId) return null;
+
   const org = await prisma.organization.findUnique({
-    where: { id: orgId },
+    where: { clerkOrgId: orgId },
     include: {
       qboConnection: {
         select: {

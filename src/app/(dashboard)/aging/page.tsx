@@ -44,7 +44,9 @@ export default function AgingPage() {
         setRows(data.rows);
         setTotals(data.totals);
       }
-    } catch { /* handle error */ }
+    } catch (error) {
+      console.error(error);
+    }
     setLoading(false);
   }, []);
 

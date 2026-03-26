@@ -87,8 +87,8 @@ export default function RemindersPage() {
           }))
         );
       }
-    } catch {
-      // Handle error
+    } catch (error) {
+      console.error(error);
     }
     setLoading(false);
   }, []);
