@@ -3,18 +3,31 @@
  * Sets paidAt = updatedAt for all PAID invoices where paidAt is null.
  *
  * Usage:
- *   npx tsx scripts/backfill-paid-at.ts
+ *   npx dotenv -e .env.local -- npx tsx -r tsconfig-paths/register scripts/backfill-paid-at.ts
  *
  * This is safe to run multiple times — it only updates records where paidAt is null.
  */
 
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { config } from "dotenv";
+import path from "node:path";
+
+// Load env
+config({ path: path.join(__dirname, "..", ".env.local") });
+config({ path: path.join(__dirname, "..", ".env") });
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  console.error("DATABASE_URL not found in environment. Aborting.");
+  process.exit(1);
+}
 
 async function main() {
-  const prisma = new PrismaClient();
+  const adapter = new PrismaPg({ connectionString: databaseUrl });
+  const prisma = new PrismaClient({ adapter });
 
   try {
-    // Count how many need backfilling
     const count = await prisma.invoice.count({
       where: { status: "PAID", paidAt: null },
     });
@@ -26,8 +39,6 @@ async function main() {
       return;
     }
 
-    // Batch update: set paidAt = updatedAt for all PAID invoices missing paidAt
-    // Prisma doesn't support UPDATE SET col = other_col, so we fetch and batch update
     const batchSize = 500;
     let processed = 0;
 
